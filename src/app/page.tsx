@@ -1,69 +1,65 @@
-import Image from "next/image";
+import Link from 'next/link';
+import { Logo } from '@/components/Logo';
+import { PublicFooter } from '@/components/PublicFooter';
 
 export default function Home() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="flex min-h-screen flex-col">
+      <header className="bg-navy">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4 sm:px-6">
+          <Logo light />
+          <nav className="flex items-center gap-2 text-sm">
+            <Link href="/verify" className="rounded-md px-3 py-2 text-slate-200 hover:text-white">Verify a result</Link>
+            <Link href="/login" className="btn-primary">Staff sign in</Link>
+          </nav>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+      </header>
+
+      <section className="relative overflow-hidden bg-navy text-white">
+        <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'radial-gradient(circle at 80% 20%, #009689 0, transparent 45%), radial-gradient(circle at 10% 90%, #007a55 0, transparent 40%)' }} />
+        <div className="relative mx-auto grid max-w-6xl gap-10 px-4 pt-14 pb-20 sm:px-6 lg:grid-cols-2 lg:items-center">
+          <div>
+            <p className="mb-3 inline-block rounded-full bg-white/10 px-3 py-1 text-xs font-medium tracking-wide text-teal-200">
+              College of Postgraduate Studies · Nnamdi Azikiwe University, Awka
+            </p>
+            <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">CPGS Results Repository</h1>
+            <p className="mt-4 max-w-xl text-lg text-slate-300">
+              Every postgraduate final result, past and present, kept as one authoritative, searchable and
+              tamper-evident digital record.
+            </p>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <Link href="/login" className="btn-primary px-5 py-2.5">Staff sign in</Link>
+              <Link href="/verify" className="btn border border-white/30 px-5 py-2.5 text-white hover:bg-white/10">Verify a document</Link>
+            </div>
+          </div>
+          <div className="card border-white/10 bg-white/5 p-6 text-sm text-slate-200 backdrop-blur">
+            <h2 className="mb-4 text-base font-semibold text-white">Verifying a UNIZIK postgraduate result?</h2>
+            <p>Employers and institutions can confirm a statement of result or transcript without contacting the Records Unit.</p>
+            <ol className="mt-4 space-y-2">
+              <li className="flex gap-3"><span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand text-xs font-bold">1</span>Find the 8-character code printed beside the QR code on the document.</li>
+              <li className="flex gap-3"><span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand text-xs font-bold">2</span>Scan the QR code, or enter the code on the verification page.</li>
+              <li className="flex gap-3"><span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand text-xs font-bold">3</span>Compare the name, degree and class shown with the document in hand.</li>
+            </ol>
+            <Link href="/verify" className="btn-accent mt-6 w-full">Go to verification</Link>
+          </div>
         </div>
-      </main>
+      </section>
+
+      <section className="mx-auto grid w-full max-w-6xl gap-6 px-4 py-16 sm:px-6 md:grid-cols-3">
+        {[
+          { t: 'Legacy digitization', d: 'Paper result sheets are scanned to archival standard, indexed, checked by a second officer and locked.', c: 'bg-brand' },
+          { t: 'Online submission', d: 'Departments submit final results online. Each sheet moves through HOD, Faculty, Records, Provost and Senate approval.', c: 'bg-accent' },
+          { t: 'Verification', d: 'Every issued statement and transcript carries a QR code and verification code that can be checked here at any time.', c: 'bg-navy' },
+        ].map((f) => (
+          <div key={f.t} className="card p-6">
+            <span className={`mb-4 block h-1 w-10 rounded ${f.c}`} />
+            <h3 className="font-semibold text-navy">{f.t}</h3>
+            <p className="mt-2 text-sm text-muted">{f.d}</p>
+          </div>
+        ))}
+      </section>
+
+      <PublicFooter />
     </div>
   );
 }

@@ -1,0 +1,8 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "crons": [
+    { "path": "/api/cron/verify-audit", "schedule": "0 0 * * *" },
+    { "path": "/api/cron/backup-files", "schedule": "0 1 * * *" },
+    { "path": "/api/cron/reminders", "schedule": "0 7 * * *" }
+  ]
+}

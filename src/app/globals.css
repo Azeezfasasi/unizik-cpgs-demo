@@ -1,26 +1,84 @@
 @import "tailwindcss";
 
+/*
+ * UNIZIK CPGS brand palette
+ *   brand   #009689  teal: primary actions, links, focus
+ *   accent  #007a55  deep green: success, approvals, secondary emphasis
+ *   navy    #0f172a  sidebar, headings, dark surfaces
+ *   ink     #000000  body text
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f6f8f9;
+  --surface: #ffffff;
+  --foreground: #000000;
+  --muted: #475569;
+  --line: #e2e8f0;
 }
 
 @theme inline {
   --color-background: var(--background);
+  --color-surface: var(--surface);
   --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+
+  --color-brand: #009689;
+  --color-brand-hover: #007f74;
+  --color-brand-soft: #e6f5f3;
+  --color-accent: #007a55;
+  --color-accent-soft: #e6f2ee;
+  --color-navy: #0f172a;
+  --color-navy-soft: #1e293b;
+  --color-ink: #000000;
+
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+}
+
+@utility btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+@layer components {
+  .btn-primary {
+    @apply btn bg-brand text-white hover:bg-brand-hover;
+  }
+  .btn-accent {
+    @apply btn bg-accent text-white hover:bg-[#006546];
+  }
+  .btn-dark {
+    @apply btn bg-navy text-white hover:bg-navy-soft;
+  }
+  .btn-outline {
+    @apply btn border border-line bg-surface text-navy hover:bg-slate-50;
+  }
+  .btn-danger {
+    @apply btn bg-red-700 text-white hover:bg-red-800;
+  }
+  .input {
+    @apply block w-full rounded-md border border-line bg-white px-3 py-2 text-sm text-ink placeholder:text-slate-400 focus:border-brand focus:ring-2 focus:ring-brand/20 focus:outline-none;
+  }
+  .label {
+    @apply mb-1 block text-sm font-medium text-navy;
+  }
+  .card {
+    @apply rounded-lg border border-line bg-surface shadow-sm;
+  }
+  .table {
+    @apply w-full text-left text-sm;
+  }
+  .table th {
+    @apply border-b border-line bg-slate-50 px-4 py-2.5 text-xs font-semibold tracking-wide text-muted uppercase;
+  }
+  .table td {
+    @apply border-b border-line px-4 py-3 align-top;
+  }
+  .link {
+    @apply font-medium text-brand hover:underline;
+  }
 }
