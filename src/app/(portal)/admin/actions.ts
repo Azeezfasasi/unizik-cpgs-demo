@@ -15,6 +15,10 @@ import { UserCreateSchema, objectId } from '@/lib/validators';
 import type { ActionState } from '@/lib/action-state';
 import { AcademicSession, Department, Faculty, Programme, User } from '@/models';
 import { DEGREE_TYPES } from '@/models/Programme';
+import Setting from '@/models/Setting';
+import { describeUsage, usageOf, type StructureKind } from '@/lib/structure';
+import { getGradingBands, GRADING_KEY } from '@/lib/settings';
+import type { Band } from '@/lib/grading';
 
 function tempPassword() {
   // 16 chars, guaranteed upper, lower and digit.
@@ -164,5 +168,168 @@ export async function createSession(_: ActionState, fd: FormData): Promise<Actio
     const s = await AcademicSession.create({ label: `${startYear}/${startYear + 1}`, startYear });
     await audit(admin, 'structure.session_create', 'AcademicSession', s.id, undefined, { label: s.label });
     return { ok: true, message: `Session ${s.label} added.` };
+  });
+}
+
+// ---------------------------------------------------------------- edit and delete
+
+const optPattern = z.string().trim().max(100).optional().transform((v) => v || undefined);
+
+function checkPattern(p?: string) {
+  if (!p) return;
+  try { new RegExp(p); } catch { fail('Matric pattern is not a valid regular expression'); }
+}
+
+async function assertUnused(kind: StructureKind, id: string, what: string) {
+  const usage = await usageOf(kind, id);
+  if (Object.keys(usage).length) fail(`${what} cannot be deleted while it is in use (${describeUsage(usage)}).`);
+}
+
+export async function updateFaculty(id: string, _: ActionState, fd: FormData): Promise<ActionState> {
+  return run(async () => {
+    const admin = await requirePermission('structure:manage');
+    await db();
+    const d = z.object({ name: z.string().trim().min(3), code: z.string().trim().min(2).max(10) }).parse(Object.fromEntries(fd));
+    const f = await Faculty.findById(id);
+    if (!f) fail('Faculty not found');
+    const before = { name: f.name, code: f.code };
+    f.set(d);
+    await f.save();
+    await audit(admin, 'structure.faculty_update', 'Faculty', id, before, d);
+    return { ok: true, message: 'Faculty updated.' };
+  });
+}
+
+export async function deleteFaculty(id: string): Promise<ActionState> {
+  return run(async () => {
+    const admin = await requirePermission('structure:manage');
+    await db();
+    const f = await Faculty.findById(id).lean();
+    if (!f) fail('Faculty not found');
+    await assertUnused('faculty', id, f.name);
+    await Faculty.deleteOne({ _id: id });
+    await audit(admin, 'structure.faculty_delete', 'Faculty', id, { name: f.name, code: f.code });
+    return { ok: true, message: `${f.name} deleted.` };
+  });
+}
+
+export async function updateDepartment(id: string, _: ActionState, fd: FormData): Promise<ActionState> {
+  return run(async () => {
+    const admin = await requirePermission('structure:manage');
+    await db();
+    const d = z.object({
+      name: z.string().trim().min(3), code: z.string().trim().min(2).max(10), faculty: objectId, matricPattern: optPattern,
+    }).parse(Object.fromEntries(fd));
+    checkPattern(d.matricPattern);
+    if (!(await Faculty.exists({ _id: d.faculty }))) fail('Faculty not found');
+    const dep = await Department.findById(id);
+    if (!dep) fail('Department not found');
+    const before = { name: dep.name, code: dep.code, faculty: dep.faculty.toString(), matricPattern: dep.matricPattern };
+    const moved = before.faculty !== d.faculty;
+    dep.set({ ...d, matricPattern: d.matricPattern ?? null });
+    await dep.save();
+    // Department staff carry their faculty for scoping, so they follow a move.
+    const staffMoved = moved ? (await User.updateMany({ department: id }, { $set: { faculty: d.faculty } })).modifiedCount : 0;
+    await audit(admin, 'structure.department_update', 'Department', id, before, { ...d, staffMoved });
+    return { ok: true, message: `Department updated.${moved ? ` Moved with ${staffMoved} staff account(s).` : ''}` };
+  });
+}
+
+export async function deleteDepartment(id: string): Promise<ActionState> {
+  return run(async () => {
+    const admin = await requirePermission('structure:manage');
+    await db();
+    const dep = await Department.findById(id).lean();
+    if (!dep) fail('Department not found');
+    await assertUnused('department', id, dep.name);
+    await Department.deleteOne({ _id: id });
+    await audit(admin, 'structure.department_delete', 'Department', id, { name: dep.name, code: dep.code });
+    return { ok: true, message: `${dep.name} deleted.` };
+  });
+}
+
+export async function updateProgramme(id: string, _: ActionState, fd: FormData): Promise<ActionState> {
+  return run(async () => {
+    const admin = await requirePermission('structure:manage');
+    await db();
+    const d = z.object({
+      name: z.string().trim().min(3), code: z.string().trim().min(2).max(20), degreeType: z.enum(DEGREE_TYPES), department: objectId,
+    }).parse(Object.fromEntries(fd));
+    const p = await Programme.findById(id);
+    if (!p) fail('Programme not found');
+    if (!(await Department.exists({ _id: d.department }))) fail('Department not found');
+    const before = { name: p.name, code: p.code, degreeType: p.degreeType, department: p.department.toString() };
+    if (before.department !== d.department) {
+      const usage = await usageOf('programme', id);
+      if (Object.keys(usage).length) fail(`This programme already has results (${describeUsage(usage)}), so it cannot move to another department.`);
+    }
+    p.set(d);
+    await p.save();
+    await audit(admin, 'structure.programme_update', 'Programme', id, before, d);
+    return { ok: true, message: 'Programme updated. Existing records keep the degree title they were issued with.' };
+  });
+}
+
+export async function deleteProgramme(id: string): Promise<ActionState> {
+  return run(async () => {
+    const admin = await requirePermission('structure:manage');
+    await db();
+    const p = await Programme.findById(id).lean();
+    if (!p) fail('Programme not found');
+    await assertUnused('programme', id, p.name);
+    await Programme.deleteOne({ _id: id });
+    await audit(admin, 'structure.programme_delete', 'Programme', id, { name: p.name, code: p.code });
+    return { ok: true, message: `${p.name} deleted.` };
+  });
+}
+
+export async function updateSession(id: string, _: ActionState, fd: FormData): Promise<ActionState> {
+  return run(async () => {
+    const admin = await requirePermission('structure:manage');
+    await db();
+    const startYear = z.coerce.number().int().min(1960).max(2100).parse(fd.get('startYear'));
+    const s = await AcademicSession.findById(id);
+    if (!s) fail('Session not found');
+    const usage = await usageOf('session', id);
+    if (Object.keys(usage).length) fail(`Session ${s.label} is in use (${describeUsage(usage)}), so its year cannot change.`);
+    const before = { label: s.label };
+    s.set({ label: `${startYear}/${startYear + 1}`, startYear });
+    await s.save();
+    await audit(admin, 'structure.session_update', 'AcademicSession', id, before, { label: s.label });
+    return { ok: true, message: `Session changed to ${s.label}.` };
+  });
+}
+
+export async function deleteSession(id: string): Promise<ActionState> {
+  return run(async () => {
+    const admin = await requirePermission('structure:manage');
+    await db();
+    const s = await AcademicSession.findById(id).lean();
+    if (!s) fail('Session not found');
+    await assertUnused('session', id, `Session ${s.label}`);
+    await AcademicSession.deleteOne({ _id: id });
+    await audit(admin, 'structure.session_delete', 'AcademicSession', id, { label: s.label });
+    return { ok: true, message: `Session ${s.label} deleted.` };
+  });
+}
+
+// ---------------------------------------------------------------- grading bands
+
+const BAND_CLASSES = ['DISTINCTION', 'CREDIT', 'MERIT', 'PASS'] as const;
+
+export async function saveGradingBands(_: ActionState, fd: FormData): Promise<ActionState> {
+  return run(async () => {
+    const admin = await requirePermission('structure:manage');
+    await db();
+    const cgpa = z.coerce.number().min(0, 'CGPA must be 0–5').max(5, 'CGPA must be 0–5');
+    const min = Object.fromEntries(BAND_CLASSES.map((c) => [c, Math.round(cgpa.parse(fd.get(c)) * 100) / 100]));
+    if (!(min.DISTINCTION > min.CREDIT && min.CREDIT > min.MERIT && min.MERIT > min.PASS && min.PASS > 0)) {
+      fail('Each class must start above the one below it: Distinction > Credit > Merit > Pass > 0.');
+    }
+    const bands: Band[] = [...BAND_CLASSES.map((cls) => ({ cls, min: min[cls] })), { cls: 'FAIL', min: 0 }];
+    const { bands: before } = await getGradingBands();
+    await Setting.findByIdAndUpdate(GRADING_KEY, { $set: { value: bands, updatedBy: admin.id } }, { upsert: true });
+    await audit(admin, 'structure.grading_update', 'Setting', GRADING_KEY, before, bands);
+    return { ok: true, message: 'Grading bands saved. Indexing and submission checks use them from now on.' };
   });
 }

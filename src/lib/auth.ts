@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 import { Types } from 'mongoose';
 import { db } from './db';
 import { readSession } from './session';
-import { can, DEPARTMENT_ROLES, FACULTY_ROLES, type Permission, type Role } from './rbac';
+import { can, canSee, DEPARTMENT_ROLES, FACULTY_ROLES, type Permission, type Role } from './rbac';
 import { User, Department } from '@/models';
 
 export type CurrentUser = {
@@ -29,10 +29,11 @@ export class AuthError extends Error {
 }
 
 /**
- * Reads the session cookie and re-loads the user from the database on every request,
- * so a deactivated account or a role change takes effect immediately. Memoised per request.
+ * Reads the session cookie and loads the user from the database, uncached.
+ * Server actions that change the account (password, MFA) and then redirect must use this:
+ * the redirect target renders in the same request, so a memoised copy would be stale.
  */
-export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
+export async function loadCurrentUser(): Promise<CurrentUser | null> {
   const s = await readSession();
   if (!s) return null;
   await db();
@@ -49,7 +50,13 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
     mustChangePassword: !!u.mustChangePassword,
     mfaPassed: s.mfa,
   };
-});
+}
+
+/**
+ * The signed-in user, re-loaded from the database on every request so a deactivated account
+ * or a role change takes effect immediately. Memoised per request.
+ */
+export const getCurrentUser = cache(loadCurrentUser);
 
 /** For pages: redirects to login or the pending account-setup step. */
 export async function requireUser(opts: { allowSetup?: boolean } = {}) {
@@ -62,10 +69,10 @@ export async function requireUser(opts: { allowSetup?: boolean } = {}) {
   return user;
 }
 
-/** For pages: requires one of the permissions, otherwise back to the dashboard. */
+/** For pages: requires one of the permissions (SUPER_ADMIN may open any page), otherwise back to the dashboard. */
 export async function requirePage(...perms: Permission[]) {
   const user = await requireUser();
-  if (perms.length && !perms.some((p) => can(user.role, p))) redirect('/dashboard?denied=1');
+  if (perms.length && !perms.some((p) => canSee(user.role, p))) redirect('/dashboard?denied=1');
   return user;
 }
 

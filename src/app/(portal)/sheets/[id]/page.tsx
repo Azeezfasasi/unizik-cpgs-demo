@@ -12,6 +12,7 @@ import { diffSnapshots, type RowSnapshot } from '@/lib/sheets';
 import { FLOW, LEGACY_STEPS, ONLINE_STEPS, STATUS_LABELS, type FlowStage } from '@/lib/workflow';
 import { fmtDate, fmtDateTime, fullName, minutesSince } from '@/lib/format';
 import { classConsistency } from '@/lib/grading';
+import { getGradingBands } from '@/lib/settings';
 import { AcademicSession, Department, DigitizationBatch, GraduandRecord, Programme, ResultSheet, StoredFile } from '@/models';
 import { Alert, Badge, Card, ClassBadge, DetailList, PageHeader, StatusBadge, Steps, PageSkeleton } from '@/components/ui';
 import { ScanViewer } from '@/components/ScanViewer';
@@ -40,7 +41,7 @@ async function SheetPageContent({ params }: PageProps<'/sheets/[id]'>) {
   const sheet = await ResultSheet.findById(id).lean();
   if (!sheet || !(await canView(user, sheet))) notFound();
 
-  const [dept, prog, session, batch, files, records] = await Promise.all([
+  const [dept, prog, session, batch, files, records, grading] = await Promise.all([
     Department.findById(sheet.department).populate<{ faculty: { name: string } }>('faculty', 'name').lean(),
     Programme.findById(sheet.programme).lean(),
     AcademicSession.findById(sheet.session).lean(),
@@ -49,6 +50,7 @@ async function SheetPageContent({ params }: PageProps<'/sheets/[id]'>) {
     GraduandRecord.find({ sheet: sheet._id })
       .populate<{ student: { matricNo: string; surname: string; otherNames: string; sex?: string } }>('student', 'matricNo surname otherNames sex')
       .lean(),
+    getGradingBands(),
   ]);
   records.sort((a, b) => a.student.matricNo.localeCompare(b.student.matricNo));
   await audit(user, 'sheet.view', 'ResultSheet', id);
@@ -103,10 +105,12 @@ async function SheetPageContent({ params }: PageProps<'/sheets/[id]'>) {
                 <SheetUploader sheetId={id_} purpose={online ? 'SUBMISSION_SCAN' : 'LEGACY_SCAN'}
                   label={online ? 'Attach the signed and stamped result sheet' : 'Upload scanned pages'} />
                 {files.map((f) => (
-                  <ActionForm key={f._id.toString()} action={detachFile.bind(null, id_)} className="flex items-center justify-between text-xs" confirm="Remove this scan from the sheet?">
-                    <input type="hidden" name="fileId" value={f._id.toString()} />
-                    <span className="truncate">{f.originalName} <span className="font-mono text-muted">sha256 {f.sha256.slice(0, 12)}…</span></span>
-                    <SubmitButton className="text-red-700 hover:underline" pendingText="…">Remove</SubmitButton>
+                  <ActionForm key={f._id.toString()} action={detachFile.bind(null, id_)} className="text-xs" confirm="Remove this scan from the sheet?">
+                    <div className="flex items-center justify-between">
+                      <input type="hidden" name="fileId" value={f._id.toString()} />
+                      <span className="truncate">{f.originalName} <span className="font-mono text-muted">sha256 {f.sha256.slice(0, 12)}…</span></span>
+                      <SubmitButton className="text-red-700 hover:underline" pendingText="…">Remove</SubmitButton>
+                    </div>
                   </ActionForm>
                 ))}
               </div>
@@ -245,7 +249,7 @@ async function SheetPageContent({ params }: PageProps<'/sheets/[id]'>) {
                   <thead><tr><th>Matric no</th><th>Name</th><th className="text-right">CGPA</th><th>Class</th>{!online && <th>Page</th>}<th /></tr></thead>
                   <tbody>
                     {records.map((r) => {
-                      const warn = classConsistency(r.cgpa, r.classOfDegree as never, prog?.degreeType);
+                      const warn = classConsistency(r.cgpa, r.classOfDegree as never, prog?.degreeType, grading.bands);
                       return (
                         <tr key={r._id.toString()}>
                           <td className="font-mono text-xs">

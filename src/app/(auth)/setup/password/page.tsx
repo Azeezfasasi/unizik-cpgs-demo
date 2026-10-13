@@ -2,6 +2,7 @@ import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import { requireUser } from '@/lib/auth';
 import { ActionForm, SubmitButton } from '@/components/forms';
+import { PasswordInput } from '@/components/PasswordInput';
 import { changePassword } from '../../actions';
 
 export const metadata: Metadata = { title: 'Change password' };
@@ -27,18 +28,21 @@ async function Content() {
           : 'Choose a strong password you do not use anywhere else.'}
       </p>
       <ActionForm action={changePassword} className="space-y-4">
-        <div>
-          <label className="label" htmlFor="current">{user.mustChangePassword ? 'Temporary password' : 'Current password'}</label>
-          <input id="current" name="current" type="password" autoComplete="current-password" required className="input" />
-        </div>
+        {/* On the forced first change the temporary password was just used to sign in, so it is not asked again. */}
+        {!user.mustChangePassword && (
+          <div>
+            <label className="label" htmlFor="current">Current password</label>
+            <PasswordInput id="current" name="current" autoComplete="current-password" required />
+          </div>
+        )}
         <div>
           <label className="label" htmlFor="password">New password</label>
-          <input id="password" name="password" type="password" autoComplete="new-password" minLength={12} required className="input" />
+          <PasswordInput id="password" name="password" autoComplete="new-password" minLength={12} required />
           <p className="mt-1 text-xs text-muted">At least 12 characters with upper and lower case letters and a number.</p>
         </div>
         <div>
           <label className="label" htmlFor="confirm">Confirm new password</label>
-          <input id="confirm" name="confirm" type="password" autoComplete="new-password" required className="input" />
+          <PasswordInput id="confirm" name="confirm" autoComplete="new-password" required />
         </div>
         <SubmitButton className="btn-primary w-full">Save password</SubmitButton>
       </ActionForm>

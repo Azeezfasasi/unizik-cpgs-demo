@@ -139,11 +139,13 @@ async function BatchPageContent({ params }: PageProps<'/digitization/batches/[id
                 </div>
                 <SubmitButton className="btn-primary w-full">Save assignments</SubmitButton>
               </ActionForm>
-              <ActionForm action={setBatchStatus.bind(null, id)} className="mt-4 flex gap-2 border-t border-line pt-4">
-                <select name="status" defaultValue={b.status} className="input">
-                  <option value="INVENTORIED">Inventoried</option><option value="IN_PROGRESS">In progress</option><option value="COMPLETED">Completed</option>
-                </select>
-                <SubmitButton className="btn-outline">Update</SubmitButton>
+              <ActionForm action={setBatchStatus.bind(null, id)} className="mt-4 border-t border-line pt-4">
+                <div className="flex gap-2">
+                  <select name="status" defaultValue={b.status} className="input">
+                    <option value="INVENTORIED">Inventoried</option><option value="IN_PROGRESS">In progress</option><option value="COMPLETED">Completed</option>
+                  </select>
+                  <SubmitButton className="btn-outline">Update</SubmitButton>
+                </div>
               </ActionForm>
             </Card>
           )}

@@ -1,7 +1,9 @@
 import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import { db } from '@/lib/db';
+import { redirect } from 'next/navigation';
 import { requirePage } from '@/lib/auth';
+import { can } from '@/lib/rbac';
 import { AcademicSession, Department, Programme } from '@/models';
 import { Alert, Card, PageHeader, PageSkeleton } from '@/components/ui';
 import { ActionForm, SubmitButton } from '@/components/forms';
@@ -19,6 +21,8 @@ export default function NewSubmissionPage() {
 
 async function NewSubmissionPageContent() {
   const user = await requirePage('submission:create');
+  // Only a department PG coordinator can prepare a submission for their own department.
+  if (!can(user.role, 'submission:create')) redirect('/submissions');
   await db();
   const [dept, programmes, sessions] = await Promise.all([
     Department.findById(user.department).lean(),
