@@ -1,4 +1,5 @@
 import 'server-only';
+import crypto from 'crypto';
 import { Types } from 'mongoose';
 import { Department, GraduandRecord, Programme, ResultSheet, Student, User } from '@/models';
 import type { ResultSheetDoc } from '@/models/ResultSheet';
@@ -103,6 +104,18 @@ export async function snapshotRows(sheetId: Types.ObjectId) {
 }
 
 export type RowSnapshot = Awaited<ReturnType<typeof snapshotRows>>[number];
+
+/**
+ * Short code derived from a sheet's rows (e.g. 7F3A-91C2), printed on the sheet for signing.
+ * Any change to a matric number, name, CGPA, class, thesis title or course after printing
+ * produces a different code, so approvers can tell whether the signed scan matches the data.
+ */
+export function rowFingerprint(rows: RowSnapshot[]) {
+  const canonical = [...rows].sort((a, b) => a.matricNo.localeCompare(b.matricNo))
+    .map((r) => [r.matricNo, r.name, r.cgpa, r.classOfDegree, r.thesisTitle, r.courses]);
+  const hex = crypto.createHash('sha256').update(JSON.stringify(canonical)).digest('hex').slice(0, 8).toUpperCase();
+  return `${hex.slice(0, 4)}-${hex.slice(4)}`;
+}
 
 export function diffSnapshots(prev: RowSnapshot[] | undefined, next: RowSnapshot[] | undefined) {
   if (!prev || !next) return null;
