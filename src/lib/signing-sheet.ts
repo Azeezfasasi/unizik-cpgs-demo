@@ -5,6 +5,9 @@ import { CLASS_LABELS, type ClassOfDegree } from './grading';
 import { fmtDateTime } from './format';
 
 export type SigningSheetData = {
+  /** ONLINE: department final result sheet. LEGACY: taskforce certified transcription of an archived sheet. */
+  kind: 'ONLINE' | 'LEGACY';
+  boxCode?: string;
   reference: string;
   fingerprint: string;
   faculty: string;
@@ -16,6 +19,28 @@ export type SigningSheetData = {
 };
 
 const W = 841.89, H = 595.28, M = 36; // A4 landscape
+
+/** Wording that differs between a department submission and a legacy transcription. */
+const TEXT = {
+  ONLINE: {
+    title: 'FINAL RESULT SHEET OF POSTGRADUATE GRADUANDS',
+    certify: (d: SigningSheetData) => [
+      `We certify that the ${d.rows.length} result(s) listed above are the true and final results of the graduands of the ${d.programme} programme for the ${d.session} session,`,
+      'as approved by the Department, and that they agree with the records submitted to the College of Postgraduate Studies.',
+    ],
+    roles: ['Departmental PG Coordinator', 'Head of Department', 'External Examiner'],
+    stamp: 'DEPARTMENT STAMP',
+  },
+  LEGACY: {
+    title: 'CERTIFIED TRANSCRIPTION OF LEGACY RESULT SHEET',
+    certify: (d: SigningSheetData) => [
+      `We certify that the ${d.rows.length} result(s) listed above were transcribed from the original result sheet of the ${d.programme} programme for the ${d.session} session`,
+      `held in archive box ${d.boxCode ?? '-'}, and checked against the original. The original sheet and its scan remain the legal source.`,
+    ],
+    roles: ['Indexer', 'QA Reviewer', 'Taskforce Lead'],
+    stamp: 'RECORDS UNIT STAMP',
+  },
+} as const;
 const LINE = rgb(0.85, 0.88, 0.92);
 const ROW_H = 17;
 const LINE_H = 10.5;
@@ -42,7 +67,7 @@ export async function renderSigningSheet(input: SigningSheetData) {
     rows: input.rows.map((r) => ({ ...r, name: safe(r.name), thesisTitle: r.thesisTitle ? safe(r.thesisTitle) : '' })),
   };
   const pdf = await PDFDocument.create();
-  pdf.setTitle(`Result sheet for signing - ${d.reference}`);
+  pdf.setTitle(`${d.kind === 'LEGACY' ? 'Certified transcription' : 'Result sheet for signing'} - ${d.reference}`);
   pdf.setAuthor('College of Postgraduate Studies, Nnamdi Azikiwe University');
   pdf.setSubject(`Row fingerprint ${d.fingerprint}`);
   const font = await pdf.embedFont(StandardFonts.Helvetica);
@@ -132,13 +157,15 @@ function newPage(pdf: PDFDocument, d: SigningSheetData, font: PDFFont, bold: PDF
   const ref = `Ref: ${d.reference}`;
   page.drawText(ref, { x: W - M - bold.widthOfTextAtSize(ref, 10), y: H - 32, size: 10, font: bold, color: rgb(1, 1, 1) });
 
-  page.drawText('FINAL RESULT SHEET OF POSTGRADUATE GRADUANDS', { x: M, y: H - 80, size: 12.5, font: bold, color: NAVY });
+  page.drawText(TEXT[d.kind].title, { x: M, y: H - 80, size: 12.5, font: bold, color: NAVY });
   const meta: [string, string][] = [
     ['Faculty', d.faculty], ['Department', d.department], ['Programme', d.programme], ['Session', d.session],
+    ...(d.kind === 'LEGACY' ? [['Archive box', d.boxCode ?? '-'] as [string, string]] : []),
   ];
+  const widths = d.kind === 'LEGACY' ? [205, 185, 215, 70, 95] : [230, 200, 240, 100];
   let x = M;
   meta.forEach(([k, v], i) => {
-    const colW = [230, 200, 240, 100][i];
+    const colW = widths[i];
     page.drawText(k.toUpperCase(), { x, y: H - 100, size: 7, font: bold, color: MUTED });
     page.drawText(truncate(v, bold, 9.5, colW - 10), { x, y: H - 112, size: 9.5, font: bold, color: BLACK });
     x += colW;
@@ -159,13 +186,10 @@ function tableTop(page: PDFPage, bold: PDFFont) {
 
 function drawCertification(page: PDFPage, top: number, d: SigningSheetData, font: PDFFont, bold: PDFFont) {
   page.drawText('CERTIFICATION', { x: M, y: top, size: 10, font: bold, color: GREEN });
-  page.drawText(
-    `We certify that the ${d.rows.length} result(s) listed above are the true and final results of the graduands of the ${d.programme} programme for the ${d.session} session,`,
-    { x: M, y: top - 15, size: 8.5, font, color: BLACK });
-  page.drawText('as approved by the Department, and that they agree with the records submitted to the College of Postgraduate Studies.',
-    { x: M, y: top - 27, size: 8.5, font, color: BLACK });
+  TEXT[d.kind].certify(d).forEach((line, i) =>
+    page.drawText(truncate(line, font, 8.5, W - 2 * M), { x: M, y: top - 15 - i * 12, size: 8.5, font, color: BLACK }));
 
-  const roles = ['Departmental PG Coordinator', 'Head of Department', 'External Examiner'];
+  const roles = TEXT[d.kind].roles;
   const stampW = 150;
   const boxW = (W - 2 * M - stampW - 3 * 14) / 3;
   const boxTop = top - 44, boxH = 112;
@@ -181,6 +205,6 @@ function drawCertification(page: PDFPage, top: number, d: SigningSheetData, font
   });
   const sx = W - M - stampW;
   page.drawRectangle({ x: sx, y: boxTop - boxH, width: stampW, height: boxH, borderColor: TEAL, borderWidth: 1, borderDashArray: [4, 3] });
-  const t1 = 'DEPARTMENT STAMP';
+  const t1 = TEXT[d.kind].stamp;
   page.drawText(t1, { x: sx + (stampW - bold.widthOfTextAtSize(t1, 8)) / 2, y: boxTop - boxH / 2, size: 8, font: bold, color: TEAL });
 }

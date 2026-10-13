@@ -118,10 +118,11 @@ export async function uploadWorkbook(sheetId: string, _: ActionState, fd: FormDa
     const sheet = await loadSheet(sheetId);
     await assertCanEdit(user, sheet);
     const file = fd.get('workbook');
-    if (!(file instanceof File) || !file.size) fail('Choose the filled result template (.xlsx)');
-    if ((file as File).size > 5 * 1024 * 1024) fail('Workbook is larger than 5 MB');
+    if (!(file instanceof File) || !file.size) fail('Choose the filled result template (.xlsx or .csv)');
+    if (!/.(xlsx|csv)$/i.test((file as File).name)) fail('Upload the template as an Excel (.xlsx) or CSV (.csv) file');
+    if ((file as File).size > 5 * 1024 * 1024) fail('File is larger than 5 MB');
 
-    const { rows, errors } = parseTemplate(await (file as File).arrayBuffer());
+    const { rows, errors } = parseTemplate(await (file as File).arrayBuffer(), { fileName: (file as File).name });
     if (errors.length) return { ok: false, message: `${errors.length} problem(s) found. Nothing was saved.`, errors };
 
     const prog = await Programme.findById(sheet.programme).lean();
@@ -246,6 +247,61 @@ export async function saveLegacyRow(sheetId: string, _: ActionState, fd: FormDat
     const rec = await upsertGraduand(sheet, row, { sourceFile: sourceFile || undefined });
     await audit(user, 'record.index', 'GraduandRecord', rec.id, undefined, { matricNo: row.matricNo, sheet: sheet.reference, illegible: row.illegible });
     return { ok: true, message: `${row.matricNo} saved${row.illegible ? ' and flagged as illegible for the Head of Records' : ''}.`, warnings };
+  });
+}
+
+/**
+ * Bulk-indexes a legacy sheet from the CRR template (Excel or CSV). Rows go through the same
+ * checks as single-row entry; nothing is saved if any row fails. Rows whose matric number is
+ * already on the sheet are updated, new ones added, and existing rows are never deleted.
+ */
+export async function importLegacyRows(sheetId: string, _: ActionState, fd: FormData): Promise<ActionState> {
+  return run(async () => {
+    const user = await requirePermission('legacy:upload');
+    const sheet = await loadSheet(sheetId);
+    if (sheet.origin !== 'LEGACY') fail('Not a legacy sheet');
+    await assertCanEdit(user, sheet);
+
+    const file = fd.get('file');
+    if (!(file instanceof File) || !file.size) fail('Choose the filled template (.xlsx or .csv)');
+    const f = file as File;
+    if (!/\.(xlsx|csv)$/i.test(f.name)) fail('Upload the template as an Excel (.xlsx) or CSV (.csv) file');
+    if (f.size > 5 * 1024 * 1024) fail('File is larger than 5 MB');
+
+    let sourceFile = String(fd.get('sourceFile') ?? '');
+    if (!sourceFile && sheet.files.length === 1) sourceFile = sheet.files[0].toString();
+    if (sourceFile && !sheet.files.some((x) => x.equals(sourceFile))) fail('Pick a scan attached to this sheet');
+
+    const { rows, errors } = parseTemplate(await f.arrayBuffer(), { fileName: f.name, legacy: true });
+    if (errors.length) return { ok: false, message: `${errors.length} problem(s) found. Nothing was saved.`, errors };
+
+    const prog = await Programme.findById(sheet.programme).lean();
+    const checkErrors: CellError[] = [];
+    const warnings: string[] = [];
+    for (const [i, row] of rows.entries()) {
+      const c = await checkRow(sheet, row, prog?.degreeType);
+      c.errors.forEach((m) => checkErrors.push({ sheet: 'Graduands', row: i + 2, column: 'Matric No', message: m }));
+      c.warnings.forEach((w) => warnings.push(`${row.matricNo}: ${w}`));
+    }
+    if (checkErrors.length) return { ok: false, message: `${checkErrors.length} problem(s) found. Nothing was saved.`, errors: checkErrors, warnings };
+
+    const onSheet = new Set((await GraduandRecord.find({ sheet: sheet._id })
+      .populate<{ student: { matricNo: string } }>('student', 'matricNo').lean()).map((r) => r.student.matricNo));
+    const updated = rows.filter((r) => onSheet.has(r.matricNo)).length;
+    await withTxn(async () => {
+      for (const row of rows) await upsertGraduand(sheet, row, { sourceFile: sourceFile || undefined });
+    });
+    await refreshCount(sheet._id);
+    const illegible = rows.filter((r) => r.illegible).length;
+    await audit(user, 'record.import', 'ResultSheet', sheetId, undefined,
+      { file: f.name, rows: rows.length, added: rows.length - updated, updated, illegible, sourceFile: sourceFile || null });
+
+    return {
+      ok: true,
+      message: `${rows.length} row(s) imported from ${f.name}: ${rows.length - updated} added, ${updated} updated` +
+        `${illegible ? `, ${illegible} flagged illegible` : ''}. Check them against the scan, then send the sheet to QA.`,
+      warnings,
+    };
   });
 }
 

@@ -7,8 +7,12 @@ type Loaded = { id: string; url?: string; kind?: string; error?: string };
 
 /** Fetches a 5-minute signed link (audited server-side) and shows the scan in-app. */
 export function ScanViewer({ files, initial, height = 'h-[70vh]' }: { files: FileInfo[]; initial?: string; height?: string }) {
-  const [active, setActive] = useState(initial ?? files[0]?.id);
+  const [chosen, setActive] = useState(initial);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
+  // Derived on every render so a scan attached after the page loaded (or a removed one)
+  // is picked up without a refresh.
+  const has = (id?: string) => !!id && files.some((f) => f.id === id);
+  const active = has(chosen) ? chosen : has(initial) ? initial : files[0]?.id;
 
   useEffect(() => {
     if (!active) return;

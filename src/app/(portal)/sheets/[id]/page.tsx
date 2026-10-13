@@ -20,7 +20,7 @@ import { ActionForm, SubmitButton } from '@/components/forms';
 import { SheetUploader } from './SheetUploader';
 import { LegacyRowForm } from './LegacyRowForm';
 import {
-  decideSheet, deleteRow, detachFile, lockSheet, markIndexed, qaDecision, returnFromRecords, saveLegacyRow, submitSheet, uploadWorkbook,
+  decideSheet, deleteRow, detachFile, importLegacyRows, lockSheet, markIndexed, qaDecision, returnFromRecords, saveLegacyRow, submitSheet, uploadWorkbook,
 } from '../actions';
 
 export const metadata: Metadata = { title: 'Result sheet' };
@@ -127,15 +127,21 @@ async function SheetPageContent({ params }: PageProps<'/sheets/[id]'>) {
               <ol className="space-y-5 text-sm">
                 <li>
                   <div className="font-medium text-navy">1. Download the result template</div>
-                  <p className="mt-1 text-muted">Fill one row per graduand on the Graduands sheet and one row per course on the Courses sheet.</p>
-                  <a className="btn-outline mt-2" href={`/api/templates/result-sheet?sheet=${id_}`}>Download template (.xlsx)</a>
+                  <p className="mt-1 text-muted">
+                    Fill one row per graduand on the Graduands sheet and one row per course on the Courses sheet.
+                    The CSV version holds graduand rows only, without courses.
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <a className="btn-outline" href={`/api/templates/result-sheet?sheet=${id_}`}>Download template (.xlsx)</a>
+                    <a className="btn-outline" href={`/api/templates/result-sheet?sheet=${id_}&format=csv`}>Download CSV template</a>
+                  </div>
                 </li>
                 <li>
                   <div className="font-medium text-navy">2. Upload the filled template</div>
                   <p className="mt-1 text-muted">Every cell is checked before anything is saved. Re-uploading replaces all rows.</p>
                   <ActionForm action={uploadWorkbook.bind(null, id_)} className="mt-2" resetOnSuccess>
                     <div className="flex flex-col gap-2 sm:flex-row">
-                      <input type="file" name="workbook" accept=".xlsx" required className="input file:mr-3 file:rounded file:border-0 file:bg-brand-soft file:px-3 file:py-1 file:text-brand" />
+                      <input type="file" name="workbook" accept=".xlsx,.csv" required className="input file:mr-3 file:rounded file:border-0 file:bg-brand-soft file:px-3 file:py-1 file:text-brand" />
                       <SubmitButton pendingText="Checking…">Validate and save</SubmitButton>
                     </div>
                   </ActionForm>
@@ -215,7 +221,60 @@ async function SheetPageContent({ params }: PageProps<'/sheets/[id]'>) {
           )}
 
           {!online && editable && (
-            <Card title="Index graduands from the scan">
+            <Card title="Import from a spreadsheet (Excel or CSV)">
+              <p className="text-sm text-muted">
+                Type the graduands from the scan into the template, then import them all at once. Every row is checked exactly as
+                in the form below; if any row has a problem nothing is saved. Rows whose matric number is already on this sheet are
+                updated, new ones are added, and existing rows are never deleted.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <a className="btn-outline" href={`/api/templates/result-sheet?sheet=${id_}`}>Excel template (with courses)</a>
+                <a className="btn-outline" href={`/api/templates/result-sheet?sheet=${id_}&format=csv`}>CSV template</a>
+              </div>
+              <ActionForm action={importLegacyRows.bind(null, id_)} className="mt-4 space-y-3" resetOnSuccess>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="label" htmlFor="import-file">Filled template</label>
+                    <input id="import-file" type="file" name="file" accept=".xlsx,.csv" required
+                      className="input file:mr-3 file:rounded file:border-0 file:bg-brand-soft file:px-3 file:py-1 file:text-brand" />
+                  </div>
+                  <div>
+                    <label className="label" htmlFor="import-source">Rows were read from scan</label>
+                    {/* Keyed on the attached scans so the default follows a newly uploaded scan. */}
+                    <select key={fileList.map((x) => x.id).join()} id="import-source" name="sourceFile" className="input"
+                      defaultValue={fileList.length === 1 ? fileList[0].id : ''}>
+                      <option value="">—</option>
+                      {fileList.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <p className="text-xs text-muted">
+                  Optional columns: <b>Source Page</b> (page of the scan), <b>Illegible (Y/N)</b> (sends the row to the Head of
+                  Records instead of a guess) and <b>Remarks</b>.
+                </p>
+                <SubmitButton pendingText="Checking…">Validate and import</SubmitButton>
+              </ActionForm>
+              <div className="mt-5 border-t border-line pt-4 text-sm">
+                <div className="font-medium text-navy">Certified transcription for signing</div>
+                <p className="mt-1 text-muted">
+                  Once the rows are in, download the transcription of this sheet for the Indexer, QA Reviewer and Taskforce Lead to sign
+                  and the Records Unit to stamp. It certifies that the typed rows match the original sheet in the box.
+                </p>
+                {fingerprint ? (
+                  <>
+                    <a className="btn-outline mt-2" href={`/api/sheets/${id_}/signing-sheet`} target="_blank" rel="noreferrer">Download certified transcription (PDF)</a>
+                    <p className="mt-2 text-xs text-muted">
+                      Footer fingerprint <span className="font-mono font-semibold text-navy">{fingerprint}</span>. If rows change after
+                      printing, the fingerprint changes: print and sign a new copy.
+                    </p>
+                  </>
+                ) : <p className="mt-2 text-xs text-amber-800">Import or enter graduand rows first; the transcription is built from them.</p>}
+              </div>
+            </Card>
+          )}
+
+          {!online && editable && (
+            <Card title="Or index graduands one by one">
               <LegacyRowForm action={saveLegacyRow.bind(null, id_)} files={fileList} />
               <div className="mt-5 border-t border-line pt-4">
                 <ActionForm action={markIndexed.bind(null, id_)} confirm="Send this sheet for QA? You will not be able to edit it unless it is returned.">
@@ -228,6 +287,11 @@ async function SheetPageContent({ params }: PageProps<'/sheets/[id]'>) {
           {canQa && (
             <Card title="QA review">
               <p className="mb-3 text-sm text-muted">Compare every row against the scan. Pass only if all values match exactly.</p>
+              {fingerprint && (
+                <p className="mb-3 text-sm text-muted">
+                  If a signed transcription is attached, its footer must show row fingerprint <span className="font-mono font-semibold text-navy">{fingerprint}</span>.
+                </p>
+              )}
               <ActionForm action={qaDecision.bind(null, id_)} className="space-y-3">
                 <textarea name="comment" rows={3} className="input" placeholder="Comments (required when returning)" />
                 <label className="flex items-start gap-2 text-sm">
@@ -248,6 +312,11 @@ async function SheetPageContent({ params }: PageProps<'/sheets/[id]'>) {
           {canLock && (
             <Card title="Records verification and lock">
               <p className="mb-3 text-sm text-muted">Spot-check rows against the scan. Locking archives every record on this sheet; later changes need an amendment.</p>
+              {fingerprint && (
+                <p className="mb-3 text-sm text-muted">
+                  If a signed transcription is attached, its footer must show row fingerprint <span className="font-mono font-semibold text-navy">{fingerprint}</span>.
+                </p>
+              )}
               <ActionForm action={lockSheet.bind(null, id_)} className="space-y-3">
                 <textarea name="comment" rows={2} className="input" placeholder="Note (optional)" />
                 {illegible > 0 && (
@@ -315,7 +384,14 @@ async function SheetPageContent({ params }: PageProps<'/sheets/[id]'>) {
               ['Session', session?.label],
               ['Box', batch ? <Link className="link" href={`/digitization/batches/${batch._id}`}>{batch.boxCode}</Link> : '—'],
               ['Senate approval', fmtDate(sheet.senateApprovalDate)],
-              ...(online && fingerprint ? [['Row fingerprint', <span key="fp" className="font-mono font-semibold text-navy">{fingerprint}</span>] as [string, ReactNode]] : []),
+              ...(fingerprint ? [['Row fingerprint', (
+                <span key="fp">
+                  <span className="font-mono font-semibold text-navy">{fingerprint}</span>
+                  <a className="ml-2 text-xs link" href={`/api/sheets/${id_}/signing-sheet`} target="_blank" rel="noreferrer">
+                    {online ? 'Sheet for signing (PDF)' : 'Certified transcription (PDF)'}
+                  </a>
+                </span>
+              )] as [string, ReactNode]] : []),
               ['Created', fmtDateTime(sheet.createdAt)],
               ['Last change', fmtDateTime(sheet.statusSince)],
             ]} />
