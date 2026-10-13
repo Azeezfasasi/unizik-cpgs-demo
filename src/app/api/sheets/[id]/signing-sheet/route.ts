@@ -6,9 +6,12 @@ import { audit } from '@/lib/audit';
 import { canView } from '@/lib/sheet-access';
 import { rowFingerprint, snapshotRows } from '@/lib/sheets';
 import { renderSigningSheet } from '@/lib/signing-sheet';
-import { AcademicSession, Department, GraduandRecord, Programme, ResultSheet } from '@/models';
+import { AcademicSession, Department, DigitizationBatch, GraduandRecord, Programme, ResultSheet } from '@/models';
 
-/** Print-ready result sheet built from the submitted rows, for signatures and the department stamp. */
+/**
+ * Print-ready sheet built from a sheet's rows: for online submissions the department result sheet to sign
+ * and stamp; for legacy sheets the taskforce's certified transcription of the archived original.
+ */
 export const GET = handle(async (_req: Request, ctx: RouteContext<'/api/sheets/[id]/signing-sheet'>) => {
   const user = await requirePermission();
   const { id } = await ctx.params;
@@ -18,7 +21,7 @@ export const GET = handle(async (_req: Request, ctx: RouteContext<'/api/sheets/[
   if (!sheet) return Response.json({ error: 'Not found' }, { status: 404 });
   if (!(await canView(user, sheet))) throw new AuthError('You cannot open this sheet');
 
-  const [dept, prog, session, records, snapshot] = await Promise.all([
+  const [dept, prog, session, records, snapshot, box] = await Promise.all([
     Department.findById(sheet.department).populate<{ faculty: { name: string } }>('faculty', 'name').lean(),
     Programme.findById(sheet.programme).lean(),
     AcademicSession.findById(sheet.session).lean(),
@@ -26,12 +29,14 @@ export const GET = handle(async (_req: Request, ctx: RouteContext<'/api/sheets/[
       .populate<{ student: { matricNo: string; surname: string; otherNames: string; sex?: string } }>('student', 'matricNo surname otherNames sex')
       .lean(),
     snapshotRows(sheet._id),
+    sheet.batch ? DigitizationBatch.findById(sheet.batch).select('boxCode').lean() : null,
   ]);
-  if (!records.length) return Response.json({ error: 'Upload the result template first; the sheet is built from its rows.' }, { status: 400 });
+  if (!records.length) return Response.json({ error: 'Add graduand rows first; the sheet is built from them.' }, { status: 400 });
   records.sort((a, b) => a.student.matricNo.localeCompare(b.student.matricNo));
 
   const fingerprint = rowFingerprint(snapshot);
   const bytes = await renderSigningSheet({
+    kind: sheet.origin === 'LEGACY' ? 'LEGACY' : 'ONLINE', boxCode: box?.boxCode,
     reference: sheet.reference, fingerprint, generatedAt: new Date(),
     faculty: dept?.faculty?.name ?? '', department: dept?.name ?? '', programme: prog?.name ?? '', session: session?.label ?? '',
     rows: records.map((r) => ({
@@ -44,7 +49,7 @@ export const GET = handle(async (_req: Request, ctx: RouteContext<'/api/sheets/[
   return new Response(new Uint8Array(bytes), {
     headers: {
       'content-type': 'application/pdf',
-      'content-disposition': `inline; filename="${sheet.reference.replaceAll('/', '-')}-for-signing.pdf"`,
+      'content-disposition': `inline; filename="${sheet.reference.replaceAll('/', '-')}-${sheet.origin === 'LEGACY' ? 'certified-transcription' : 'for-signing'}.pdf"`,
       'cache-control': 'private, no-store',
     },
   });
