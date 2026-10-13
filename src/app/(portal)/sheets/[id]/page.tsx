@@ -10,7 +10,7 @@ import { can } from '@/lib/rbac';
 import { canEdit, canView } from '@/lib/sheet-access';
 import { diffSnapshots, rowFingerprint, snapshotRows, type RowSnapshot } from '@/lib/sheets';
 import { FLOW, LEGACY_STEPS, ONLINE_STEPS, STATUS_LABELS, type FlowStage } from '@/lib/workflow';
-import { fmtDate, fmtDateTime, fullName, minutesSince } from '@/lib/format';
+import { boardLine, fmtDate, fmtDateTime, fullName, minutesSince } from '@/lib/format';
 import { classConsistency } from '@/lib/grading';
 import { getGradingBands } from '@/lib/settings';
 import { AcademicSession, Department, DigitizationBatch, GraduandRecord, Programme, ResultSheet, StoredFile } from '@/models';
@@ -350,6 +350,7 @@ async function SheetPageContent({ params }: PageProps<'/sheets/[id]'>) {
                           <td>
                             {fullName(r.student)}
                             {r.thesisTitle && <div className="max-w-xs truncate text-xs text-muted" title={r.thesisTitle}>{r.thesisTitle}</div>}
+                            {boardLine(r) && <div className="max-w-xs text-xs text-muted tabular-nums">{boardLine(r)}</div>}
                             <div className="flex flex-wrap gap-1">
                               {r.illegible && <Badge tone="warning">Illegible</Badge>}
                               {warn && <span title={warn}><Badge tone="warning">Check class</Badge></span>}

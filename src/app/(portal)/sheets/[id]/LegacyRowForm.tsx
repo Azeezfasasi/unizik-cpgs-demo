@@ -30,14 +30,38 @@ export function LegacyRowForm({ action, files }: {
           <select id="sex" name="sex" className="input"><option value="">—</option><option value="M">M</option><option value="F">F</option></select>
         </div>
         <div>
-          <label className="label" htmlFor="cgpa">CGPA</label>
+          <label className="label" htmlFor="cgpa">CGPA (FCGPA)</label>
           <input id="cgpa" name="cgpa" type="number" step="0.01" min="0" max="5" className="input" />
         </div>
         <div className="sm:col-span-2">
-          <label className="label" htmlFor="classOfDegree">Class of degree *</label>
-          <select id="classOfDegree" name="classOfDegree" required className="input">
+          <label className="label" htmlFor="classOfDegree">Class of degree</label>
+          <select id="classOfDegree" name="classOfDegree" className="input">
+            <option value="">Work out from the CGPA</option>
             {CLASS_OF_DEGREE.map((c) => <option key={c} value={c}>{CLASS_LABELS[c]}</option>)}
           </select>
+        </div>
+      </div>
+      <fieldset className="grid gap-3 sm:grid-cols-5">
+        <legend className="label mb-1">Semester GPAs and project (as on the PG Board result list)</legend>
+        {[1, 2, 3, 4].map((n) => (
+          <div key={n}>
+            <label className="text-xs text-muted" htmlFor={`sem${n}`}>{['1st', '2nd', '3rd', '4th'][n - 1]} sem.</label>
+            <input id={`sem${n}`} name="semesterGpas" type="number" step="0.01" min="0" max="5" className="input" />
+          </div>
+        ))}
+        <div>
+          <label className="text-xs text-muted" htmlFor="projectGrade">Project</label>
+          <input id="projectGrade" name="projectGrade" type="number" step="0.01" min="0" max="5" className="input" />
+        </div>
+      </fieldset>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div>
+          <label className="label" htmlFor="effectiveDate">Effective date of graduation (WEF)</label>
+          <input id="effectiveDate" name="effectiveDate" type="date" className="input" />
+        </div>
+        <div>
+          <label className="label" htmlFor="boardMeeting">PG Board meeting</label>
+          <input id="boardMeeting" name="boardMeeting" className="input" placeholder="e.g. 63rd" autoComplete="off" />
         </div>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">

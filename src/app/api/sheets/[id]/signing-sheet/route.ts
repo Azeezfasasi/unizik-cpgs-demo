@@ -42,6 +42,7 @@ export const GET = handle(async (_req: Request, ctx: RouteContext<'/api/sheets/[
     rows: records.map((r) => ({
       matricNo: r.student.matricNo, name: `${r.student.surname.toUpperCase()}, ${r.student.otherNames}`, sex: r.student.sex,
       cgpa: r.cgpa, classOfDegree: r.classOfDegree, thesisTitle: r.thesisTitle,
+      semesterGpas: r.semesterGpas, projectGrade: r.projectGrade, effectiveDate: r.effectiveDate, boardMeeting: r.boardMeeting,
     })),
   });
   await audit(user, 'sheet.signing_sheet', 'ResultSheet', id, undefined, { fingerprint, rows: records.length });

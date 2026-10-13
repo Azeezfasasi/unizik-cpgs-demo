@@ -15,7 +15,10 @@ export type SigningSheetData = {
   programme: string;
   session: string;
   generatedAt: Date;
-  rows: { matricNo: string; name: string; sex?: string | null; cgpa?: number | null; classOfDegree?: string | null; thesisTitle?: string | null }[];
+  rows: {
+    matricNo: string; name: string; sex?: string | null; cgpa?: number | null; classOfDegree?: string | null; thesisTitle?: string | null;
+    semesterGpas?: number[] | null; projectGrade?: number | null; effectiveDate?: Date | null; boardMeeting?: string | null;
+  }[];
 };
 
 const W = 841.89, H = 595.28, M = 36; // A4 landscape
@@ -45,16 +48,37 @@ const LINE = rgb(0.85, 0.88, 0.92);
 const ROW_H = 17;
 const LINE_H = 10.5;
 
-/** Table columns: x offset from the margin and width. */
-const COLS = [
-  { key: 'sn', label: 'S/N', w: 30 },
-  { key: 'matric', label: 'Matric No', w: 92 },
-  { key: 'name', label: 'Name (Surname first)', w: 200 },
-  { key: 'sex', label: 'Sex', w: 32 },
-  { key: 'cgpa', label: 'CGPA', w: 44 },
-  { key: 'class', label: 'Class of degree', w: 92 },
-  { key: 'thesis', label: 'Thesis / dissertation title', w: W - 2 * M - 490 },
-] as const;
+type Row = SigningSheetData['rows'][number];
+type Col = { label: string; w: number; cell?: (r: Row, i: number) => string; bold?: boolean };
+
+const gp = (n?: number | null) => (n != null ? n.toFixed(2) : '');
+const dmy = (d?: Date | null) => (d ? d.toISOString().slice(0, 10).split('-').reverse().join('/') : '');
+
+/**
+ * Table columns. Semester GPA, project and WEF columns (the PG Board result list layout) appear
+ * only when some row has them; the thesis column takes the remaining width and is drawn last.
+ */
+function columnsFor(rows: Row[]): Col[] {
+  const sems = Math.max(0, ...rows.map((r) => r.semesterGpas?.length ?? 0));
+  const project = rows.some((r) => r.projectGrade != null);
+  const wef = rows.some((r) => r.effectiveDate);
+  const board = sems > 0 || project || wef;
+  const cols: Col[] = [
+    { label: 'S/N', w: 28, cell: (_, i) => String(i + 1) },
+    { label: board ? 'Reg. No' : 'Matric No', w: board ? 80 : 92, cell: (r) => r.matricNo, bold: true },
+    { label: 'Name (Surname first)', w: board ? 160 : 200, cell: (r) => r.name },
+    { label: 'Sex', w: 28, cell: (r) => r.sex ?? '' },
+    ...Array.from({ length: sems }, (_, s): Col => ({
+      label: `${['1st', '2nd', '3rd', '4th'][s]} Sem`, w: 40, cell: (r) => gp(r.semesterGpas?.[s]),
+    })),
+    ...(project ? [{ label: 'Proj.', w: 34, cell: (r: Row) => gp(r.projectGrade) }] : []),
+    { label: board ? 'FCGPA' : 'CGPA', w: 42, cell: (r) => gp(r.cgpa), bold: board },
+    { label: 'Class of degree', w: board ? 80 : 92, cell: (r) => (r.classOfDegree ? CLASS_LABELS[r.classOfDegree as ClassOfDegree] ?? r.classOfDegree : '') },
+    ...(wef ? [{ label: 'WEF', w: 58, cell: (r: Row) => dmy(r.effectiveDate) }] : []),
+  ];
+  const used = cols.reduce((a, c) => a + c.w, 0);
+  return [...cols, { label: 'Thesis / dissertation title', w: W - 2 * M - used }];
+}
 
 /**
  * Print-ready final result sheet generated from a submission's rows. The department prints it,
@@ -73,27 +97,26 @@ export async function renderSigningSheet(input: SigningSheetData) {
   const font = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
 
+  const cols = columnsFor(d.rows);
   let page = newPage(pdf, d, font, bold);
-  let y = tableTop(page, bold);
+  let y = tableTop(page, bold, cols);
 
-  const thesisW = COLS[COLS.length - 1].w - 6;
+  const thesisW = cols[cols.length - 1].w - 6;
+  const maxLines = thesisW < 200 ? 4 : 3;
   d.rows.forEach((r, i) => {
-    // The thesis title wraps (up to 3 lines) so the signed sheet shows it in full; the row grows to fit.
-    const thesis = wrap(r.thesisTitle ?? '', font, 8.5, thesisW, 3);
+    // The thesis title wraps so the signed sheet shows it in full; the row grows to fit.
+    const thesis = wrap(r.thesisTitle ?? '', font, 8.5, thesisW, maxLines);
     const rowH = ROW_H + (thesis.length - 1) * LINE_H;
     if (y - rowH + ROW_H < M + 40) {
       page = newPage(pdf, d, font, bold);
-      y = tableTop(page, bold);
+      y = tableTop(page, bold, cols);
     }
     if (i % 2 === 1) page.drawRectangle({ x: M, y: y - rowH + ROW_H - 5, width: W - 2 * M, height: rowH, color: rgb(0.97, 0.98, 0.98) });
-    const cells = [
-      String(i + 1), r.matricNo, r.name, r.sex ?? '', r.cgpa != null ? r.cgpa.toFixed(2) : '',
-      r.classOfDegree ? CLASS_LABELS[r.classOfDegree as ClassOfDegree] ?? r.classOfDegree : '',
-    ];
     let x = M;
-    COLS.forEach((c, ci) => {
-      if (ci < cells.length) {
-        page.drawText(truncate(cells[ci], font, 8.5, c.w - 6), { x: x + 3, y, size: 8.5, font: ci === 1 ? bold : font, color: BLACK });
+    cols.forEach((c) => {
+      if (c.cell) {
+        const f = c.bold ? bold : font;
+        page.drawText(truncate(c.cell(r, i), f, 8.5, c.w - 6), { x: x + 3, y, size: 8.5, font: f, color: BLACK });
       } else {
         thesis.forEach((line, li) => page.drawText(line, { x: x + 3, y: y - li * LINE_H, size: 8.5, font, color: BLACK }));
       }
@@ -158,6 +181,12 @@ function newPage(pdf: PDFDocument, d: SigningSheetData, font: PDFFont, bold: PDF
   page.drawText(ref, { x: W - M - bold.widthOfTextAtSize(ref, 10), y: H - 32, size: 10, font: bold, color: rgb(1, 1, 1) });
 
   page.drawText(TEXT[d.kind].title, { x: M, y: H - 80, size: 12.5, font: bold, color: NAVY });
+  // The PG Board meeting, when every row records the same one (e.g. "63rd PG BOARD MEETING").
+  const meetings = new Set(d.rows.map((r) => r.boardMeeting?.trim()).filter(Boolean));
+  if (meetings.size === 1) {
+    const label = `${safe([...meetings][0]!).toUpperCase()} PG BOARD MEETING`;
+    page.drawText(label, { x: W - M - bold.widthOfTextAtSize(label, 10), y: H - 80, size: 10, font: bold, color: GREEN });
+  }
   const meta: [string, string][] = [
     ['Faculty', d.faculty], ['Department', d.department], ['Programme', d.programme], ['Session', d.session],
     ...(d.kind === 'LEGACY' ? [['Archive box', d.boxCode ?? '-'] as [string, string]] : []),
@@ -173,12 +202,12 @@ function newPage(pdf: PDFDocument, d: SigningSheetData, font: PDFFont, bold: PDF
   return page;
 }
 
-function tableTop(page: PDFPage, bold: PDFFont) {
+function tableTop(page: PDFPage, bold: PDFFont, cols: Col[]) {
   const top = H - 132;
   page.drawRectangle({ x: M, y: top - 6, width: W - 2 * M, height: 18, color: rgb(0.9, 0.96, 0.95) });
   let x = M;
-  for (const c of COLS) {
-    page.drawText(c.label, { x: x + 3, y: top, size: 8, font: bold, color: NAVY });
+  for (const c of cols) {
+    page.drawText(truncate(c.label, bold, 8, c.w - 4), { x: x + 3, y: top, size: 8, font: bold, color: NAVY });
     x += c.w;
   }
   return top - ROW_H - 2;

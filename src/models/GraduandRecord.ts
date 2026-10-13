@@ -22,6 +22,14 @@ const GraduandRecordSchema = new Schema({
   degree:     { type: String, required: true },
   cgpa:       { type: Number, min: 0, max: 5 },
   classOfDegree: { type: String, enum: CLASS_OF_DEGREE },
+  /** GPA for each semester in order (1st, 2nd, ...), as listed on the PG Board result list. */
+  semesterGpas: { type: [Number], default: undefined },
+  /** Project / dissertation grade point, shown separately on the PG Board result list. */
+  projectGrade: { type: Number, min: 0, max: 5 },
+  /** Effective date of graduation (the "WEF" date on the PG Board result list). */
+  effectiveDate: Date,
+  /** PG Board meeting that considered the result, e.g. "63rd". */
+  boardMeeting: String,
   thesisTitle: String,
   supervisor:  String,
   senateApprovalDate: Date,

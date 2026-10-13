@@ -6,7 +6,8 @@ import { FileUploader } from '@/components/FileUploader';
 import { CLASS_LABELS, CLASS_OF_DEGREE } from '@/lib/grading';
 import { requestAmendment } from '../../amendments/actions';
 
-type Current = Record<'cgpa' | 'classOfDegree' | 'thesisTitle' | 'supervisor' | 'senateApprovalDate' | 'remarks', string>;
+type Current = Record<'cgpa' | 'classOfDegree' | 'thesisTitle' | 'supervisor' | 'senateApprovalDate' | 'remarks'
+  | 'projectGrade' | 'effectiveDate' | 'boardMeeting', string>;
 
 export function AmendmentForm({ recordId, current }: { recordId: string; current: Current }) {
   const [evidence, setEvidence] = useState('');
@@ -37,6 +38,18 @@ export function AmendmentForm({ recordId, current }: { recordId: string; current
           <div>
             <label className="label" htmlFor="a-senate">Senate approval date</label>
             <input id="a-senate" name="senateApprovalDate" type="date" defaultValue={current.senateApprovalDate} className="input" />
+          </div>
+          <div>
+            <label className="label" htmlFor="a-project">Project grade</label>
+            <input id="a-project" name="projectGrade" type="number" step="0.01" min="0" max="5" defaultValue={current.projectGrade} className="input" />
+          </div>
+          <div>
+            <label className="label" htmlFor="a-wef">Effective date of graduation (WEF)</label>
+            <input id="a-wef" name="effectiveDate" type="date" defaultValue={current.effectiveDate} className="input" />
+          </div>
+          <div>
+            <label className="label" htmlFor="a-board">PG Board meeting</label>
+            <input id="a-board" name="boardMeeting" defaultValue={current.boardMeeting} className="input" placeholder="e.g. 63rd" />
           </div>
           <div className="sm:col-span-2">
             <label className="label" htmlFor="a-remarks">Remarks</label>

@@ -12,21 +12,25 @@ import type { ActionState } from '@/lib/action-state';
 import { Amendment, GraduandRecord, StoredFile, User, Verification } from '@/models';
 
 /** Fields of a locked record that may be corrected through an amendment. */
-type AmendableField = 'cgpa' | 'classOfDegree' | 'thesisTitle' | 'supervisor' | 'senateApprovalDate' | 'remarks';
-const FIELDS: AmendableField[] = ['cgpa', 'classOfDegree', 'thesisTitle', 'supervisor', 'senateApprovalDate', 'remarks'];
+type AmendableField = 'cgpa' | 'classOfDegree' | 'thesisTitle' | 'supervisor' | 'senateApprovalDate' | 'remarks'
+  | 'projectGrade' | 'effectiveDate' | 'boardMeeting';
+const FIELDS: AmendableField[] = ['cgpa', 'classOfDegree', 'thesisTitle', 'supervisor', 'senateApprovalDate', 'remarks',
+  'projectGrade', 'effectiveDate', 'boardMeeting'];
+const DATE_FIELDS: AmendableField[] = ['senateApprovalDate', 'effectiveDate'];
 
 function normalise(field: AmendableField, raw: string) {
   const v = raw.trim();
   if (!v) return null;
-  if (field === 'cgpa') {
+  if (field === 'cgpa' || field === 'projectGrade') {
     const n = Number(v);
-    if (isNaN(n) || n < 0 || n > 5) fail('CGPA must be between 0 and 5');
+    if (isNaN(n) || n < 0 || n > 5) fail(`${field === 'cgpa' ? 'CGPA' : 'Project grade'} must be between 0 and 5`);
     return Math.round(n * 100) / 100;
   }
   if (field === 'classOfDegree' && !(CLASS_OF_DEGREE as readonly string[]).includes(v)) fail('Invalid class of degree');
-  if (field === 'senateApprovalDate') {
+  if (DATE_FIELDS.includes(field)) {
     const d = new Date(v);
-    if (isNaN(d.getTime())) fail('Invalid Senate date');
+    if (isNaN(d.getTime())) fail(field === 'effectiveDate' ? 'Invalid effective date' : 'Invalid Senate date');
+    if (d > new Date()) fail('The date cannot be in the future');
     return d.toISOString().slice(0, 10);
   }
   return v.slice(0, 500);
@@ -96,7 +100,7 @@ export async function decideAmendment(amendmentId: string, _: ActionState, fd: F
       rec!.history.push({ version: rec!.version, data: snapshot, amendment: a!._id, at: new Date() });
       for (const c of a!.changes) {
         const f = c.field as AmendableField;
-        rec!.set(f, f === 'senateApprovalDate' && c.to ? new Date(c.to as string) : c.to ?? undefined);
+        rec!.set(f, DATE_FIELDS.includes(f) && c.to ? new Date(c.to as string) : c.to ?? undefined);
       }
       rec!.version += 1;
       await rec!.save({ session });

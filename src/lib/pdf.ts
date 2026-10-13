@@ -26,6 +26,9 @@ export type DocumentData = {
   classOfDegree?: string | null;
   thesisTitle?: string | null;
   senateApprovalDate?: Date | null;
+  semesterGpas?: number[] | null;
+  projectGrade?: number | null;
+  effectiveDate?: Date | null;
   version: number;
   courses: { code: string; title?: string | null; units?: number | null; score?: number | null; grade?: string | null }[];
 };
@@ -88,6 +91,9 @@ export async function renderResultDocument(input: DocumentData) {
     ['Class of degree', d.classOfDegree ? CLASS_LABELS[d.classOfDegree as ClassOfDegree] ?? d.classOfDegree : '—'],
     ['Senate approval', fmtDate(d.senateApprovalDate)],
   ];
+  if (d.semesterGpas?.length) rows.push(['Semester GPAs', d.semesterGpas.map((g, i) => `${['1st', '2nd', '3rd', '4th'][i]}: ${g.toFixed(2)}`).join('   ')]);
+  if (d.projectGrade != null) rows.push(['Project', d.projectGrade.toFixed(2)]);
+  if (d.effectiveDate) rows.push(['Effective date of graduation', fmtDate(d.effectiveDate)]);
   if (d.thesisTitle) rows.push(['Thesis / dissertation', d.thesisTitle]);
 
   for (const [k, v] of rows) {
