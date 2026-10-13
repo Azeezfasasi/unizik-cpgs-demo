@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import { Types } from 'mongoose';
 import { Department, GraduandRecord, Programme, ResultSheet, Student, User } from '@/models';
 import type { ResultSheetDoc } from '@/models/ResultSheet';
-import { classConsistency } from './grading';
+import { classConsistency, expectedClass, type ClassOfDegree } from './grading';
 import { getGradingBands } from './settings';
 import type { GraduandRow } from './validators';
 import { FLOW, STATUS_LABELS, type FlowStage } from './workflow';
@@ -73,9 +73,9 @@ export async function upsertGraduand(sheet: SheetLike, row: GraduandRow, extra: 
   }
 
   const data = {
+    ...await rowFields(row, programme.degreeType),
     student: student._id, sheet: sheet._id, department: sheet.department, programme: sheet.programme,
     session: sheet.session, origin: sheet.origin, degree: programme.name,
-    cgpa: row.cgpa, classOfDegree: row.classOfDegree, thesisTitle: row.thesisTitle, supervisor: row.supervisor,
     courses: row.courses, sourcePage: row.sourcePage, illegible: !!row.illegible, remarks: row.remarks,
     ...(extra.sourceFile ? { sourceFile: new Types.ObjectId(extra.sourceFile) } : {}),
   };
@@ -84,6 +84,17 @@ export async function upsertGraduand(sheet: SheetLike, row: GraduandRow, extra: 
     : await GraduandRecord.create(data);
   await refreshCount(sheet._id);
   return rec!;
+}
+
+/** Result fields of a row, with the class of degree worked out from the CGPA when it was left out. */
+async function rowFields(row: GraduandRow, degreeType: string) {
+  let cls: ClassOfDegree | undefined = row.classOfDegree;
+  if (!cls) cls = degreeType === 'PhD' ? 'NOT_APPLICABLE' : expectedClass(row.cgpa!, (await getGradingBands()).bands);
+  return {
+    cgpa: row.cgpa, classOfDegree: cls, thesisTitle: row.thesisTitle, supervisor: row.supervisor,
+    semesterGpas: row.semesterGpas.length ? row.semesterGpas : undefined, projectGrade: row.projectGrade,
+    effectiveDate: row.effectiveDate, boardMeeting: row.boardMeeting,
+  };
 }
 
 export async function refreshCount(sheetId: Types.ObjectId) {
@@ -99,8 +110,20 @@ export async function snapshotRows(sheetId: Types.ObjectId) {
   return recs.map((r) => ({
     matricNo: r.student.matricNo, name: `${r.student.surname} ${r.student.otherNames}`,
     cgpa: r.cgpa ?? null, classOfDegree: r.classOfDegree ?? null, thesisTitle: r.thesisTitle ?? null,
+    // PG Board list fields, folded into one value so they appear in diffs and the fingerprint only when present.
+    board: boardSummary(r),
     courses: (r.courses ?? []).map((c) => `${c.code}:${c.units}:${c.score ?? ''}:${c.grade ?? ''}`).join('|'),
   }));
+}
+
+function boardSummary(r: { semesterGpas?: number[] | null; projectGrade?: number | null; effectiveDate?: Date | null; boardMeeting?: string | null }) {
+  const parts = [
+    r.semesterGpas?.length ? `sem:${r.semesterGpas.map((g) => g.toFixed(2)).join('/')}` : '',
+    r.projectGrade != null ? `proj:${r.projectGrade.toFixed(2)}` : '',
+    r.effectiveDate ? `wef:${r.effectiveDate.toISOString().slice(0, 10)}` : '',
+    r.boardMeeting ? `board:${r.boardMeeting}` : '',
+  ].filter(Boolean);
+  return parts.length ? parts.join(';') : null;
 }
 
 export type RowSnapshot = Awaited<ReturnType<typeof snapshotRows>>[number];
@@ -112,7 +135,8 @@ export type RowSnapshot = Awaited<ReturnType<typeof snapshotRows>>[number];
  */
 export function rowFingerprint(rows: RowSnapshot[]) {
   const canonical = [...rows].sort((a, b) => a.matricNo.localeCompare(b.matricNo))
-    .map((r) => [r.matricNo, r.name, r.cgpa, r.classOfDegree, r.thesisTitle, r.courses]);
+    // Board fields are appended only when present, so sheets printed before they existed keep their code.
+    .map((r) => [r.matricNo, r.name, r.cgpa, r.classOfDegree, r.thesisTitle, r.courses, ...(r.board ? [r.board] : [])]);
   const hex = crypto.createHash('sha256').update(JSON.stringify(canonical)).digest('hex').slice(0, 8).toUpperCase();
   return `${hex.slice(0, 4)}-${hex.slice(4)}`;
 }
@@ -127,7 +151,9 @@ export function diffSnapshots(prev: RowSnapshot[] | undefined, next: RowSnapshot
   for (const r of next) {
     const o = p.get(r.matricNo);
     if (!o) continue;
-    const fields = (['name', 'cgpa', 'classOfDegree', 'thesisTitle', 'courses'] as const).filter((f) => o[f] !== r[f]);
+    // Older snapshots have no board field: treat missing as empty.
+    const fields = (['name', 'cgpa', 'classOfDegree', 'thesisTitle', 'courses', 'board'] as const)
+      .filter((f) => (o[f] ?? null) !== (r[f] ?? null));
     if (fields.length) changed.push({ matricNo: r.matricNo, fields });
   }
   return { added, removed, changed };

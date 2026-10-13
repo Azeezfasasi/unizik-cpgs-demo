@@ -23,6 +23,7 @@ export function documentLinkValid(verificationId: string, exp: number, token: st
 
 type Populated = {
   version: number; degree: string; cgpa?: number; classOfDegree?: string; thesisTitle?: string; senateApprovalDate?: Date;
+  semesterGpas?: number[]; projectGrade?: number; effectiveDate?: Date;
   courses: { code: string; title?: string; units?: number; score?: number; grade?: string }[];
   student: { matricNo: string; surname: string; otherNames: string; sex?: string };
   department: { name: string; faculty: { name: string } }; session: { label: string };
@@ -48,6 +49,7 @@ export async function buildDocumentPdf(verificationId: string) {
     student: { name: `${r.student.surname.toUpperCase()}, ${r.student.otherNames}`, matricNo: r.student.matricNo, sex: r.student.sex },
     degree: r.degree, department: r.department.name, faculty: r.department.faculty?.name ?? '', session: r.session.label,
     cgpa: r.cgpa, classOfDegree: r.classOfDegree, thesisTitle: r.thesisTitle, senateApprovalDate: r.senateApprovalDate,
+    semesterGpas: r.semesterGpas, projectGrade: r.projectGrade, effectiveDate: r.effectiveDate,
     version: r.version, courses: r.courses ?? [],
   });
   return { bytes, filename: `${v.kind === 'TRANSCRIPT' ? 'transcript' : 'statement'}-${r.student.matricNo}-${v.code}.pdf`, v };

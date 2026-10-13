@@ -8,7 +8,8 @@ type Course = { code?: string; title?: string; units?: number; score?: number; g
 
 /**
  * Add or update one graduand row on a legacy sheet (matched by matric number).
- * Body: { matricNo, surname, otherNames, sex?, cgpa?, classOfDegree, thesisTitle?, supervisor?,
+ * Body: { matricNo, surname, otherNames, sex?, cgpa?, classOfDegree?, semesterGpas?: number[], projectGrade?,
+ *         effectiveDate? (YYYY-MM-DD), boardMeeting?, thesisTitle?, supervisor?,
  *         sourceFile?, sourcePage?, illegible?, remarks?, courses?: [{ code, title, units, score, grade }] }
  */
 export const PUT = v1(async (req: Request, ctx: RouteCtx) => {

@@ -46,6 +46,7 @@ export async function recordFilter(user: CurrentUser, p: SearchParams) {
 export type RecordRow = {
   _id: Types.ObjectId; cgpa?: number; classOfDegree?: string; origin: string; locked: boolean; degree: string;
   thesisTitle?: string; senateApprovalDate?: Date; version: number;
+  semesterGpas?: number[]; projectGrade?: number; effectiveDate?: Date; boardMeeting?: string;
   student: { matricNo: string; surname: string; otherNames: string; sex?: string };
   department: { name: string; code: string }; session: { label: string };
 };

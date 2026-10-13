@@ -8,7 +8,7 @@ import { requirePage, scopedDepartmentIds } from '@/lib/auth';
 import { audit } from '@/lib/audit';
 import { can } from '@/lib/rbac';
 import { CLASS_LABELS, type ClassOfDegree } from '@/lib/grading';
-import { fmtDate, fmtDateTime, fullName, titleCase } from '@/lib/format';
+import { boardDetails, fmtDate, fmtDateTime, fullName, titleCase, type BoardFields } from '@/lib/format';
 import { Amendment, GraduandRecord, ResultSheet, StoredFile, Verification } from '@/models';
 import { Alert, Badge, Card, DetailList, PageHeader, StatusBadge, PageSkeleton } from '@/components/ui';
 import { ScanViewer } from '@/components/ScanViewer';
@@ -18,7 +18,7 @@ import { AmendmentForm } from './AmendmentForm';
 
 export const metadata: Metadata = { title: 'Graduand record' };
 
-type Rec = {
+type Rec = BoardFields & {
   _id: Types.ObjectId; degree: string; cgpa?: number; classOfDegree?: string; thesisTitle?: string; supervisor?: string;
   senateApprovalDate?: Date; locked: boolean; version: number; origin: string; illegible: boolean; remarks?: string;
   sourceFile?: Types.ObjectId; sourcePage?: number; createdAt: Date; updatedAt: Date;
@@ -104,6 +104,7 @@ async function RecordPageContent({ params }: PageProps<'/records/[id]'>) {
               ['Department', r.department.name],
               ['Programme', r.programme.name],
               ['Session', r.session.label],
+              ...boardDetails(r),
               ['Sex', r.student.sex],
               ['Supervisor', r.supervisor],
               ['Thesis / dissertation', r.thesisTitle],
@@ -201,7 +202,8 @@ async function RecordPageContent({ params }: PageProps<'/records/[id]'>) {
               <AmendmentForm recordId={id} current={{
                 cgpa: r.cgpa?.toString() ?? '', classOfDegree: r.classOfDegree ?? '', thesisTitle: r.thesisTitle ?? '',
                 supervisor: r.supervisor ?? '', senateApprovalDate: r.senateApprovalDate ? new Date(r.senateApprovalDate).toISOString().slice(0, 10) : '',
-                remarks: r.remarks ?? '',
+                remarks: r.remarks ?? '', projectGrade: r.projectGrade?.toString() ?? '', boardMeeting: r.boardMeeting ?? '',
+                effectiveDate: r.effectiveDate ? new Date(r.effectiveDate).toISOString().slice(0, 10) : '',
               }} />
             </Card>
           )}

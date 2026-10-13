@@ -17,7 +17,7 @@ export const GET = v1(async (_req: Request, ctx: RouteCtx) => {
 
 /**
  * Request a correction to a locked record (Head of Records). Body: any of cgpa, classOfDegree,
- * thesisTitle, supervisor, senateApprovalDate, remarks; plus reason and evidence (a file id
+ * thesisTitle, supervisor, senateApprovalDate, remarks, projectGrade, effectiveDate, boardMeeting; plus reason and evidence (a file id
  * uploaded with purpose AMENDMENT_EVIDENCE).
  */
 export const POST = v1(async (req: Request, ctx: RouteCtx) => {

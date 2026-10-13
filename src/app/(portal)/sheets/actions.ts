@@ -231,11 +231,20 @@ export async function saveLegacyRow(sheetId: string, _: ActionState, fd: FormDat
     await assertCanEdit(user, sheet);
 
     const raw = Object.fromEntries(fd);
+    const blank = (v: FormDataEntryValue | undefined) => (v === '' ? undefined : v);
+    // Semester GPAs come as repeated "semesterGpas" fields; trailing blanks are unused semesters.
+    const sems = fd.getAll('semesterGpas').map((v) => String(v).trim());
+    while (sems.length && !sems[sems.length - 1]) sems.pop();
+    if (sems.some((v) => !v)) fail('Fill semester GPAs in order, with no gaps');
     const row = GraduandRowSchema.parse({
       ...raw,
       sex: raw.sex || undefined,
-      cgpa: raw.cgpa === '' ? undefined : raw.cgpa,
-      sourcePage: raw.sourcePage === '' ? undefined : raw.sourcePage,
+      cgpa: blank(raw.cgpa),
+      classOfDegree: blank(raw.classOfDegree),
+      semesterGpas: sems,
+      projectGrade: blank(raw.projectGrade),
+      effectiveDate: blank(raw.effectiveDate),
+      sourcePage: blank(raw.sourcePage),
       illegible: raw.illegible === 'on',
       courses: parseCourses(String(raw.courses ?? '')),
     });
