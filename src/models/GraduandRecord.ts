@@ -3,6 +3,8 @@ import { CLASS_OF_DEGREE } from '@/lib/grading';
 
 const CourseSchema = new Schema({
   code: String, title: String, units: Number, score: Number, grade: String,
+  /** Semester the course was taken in (1–4). */
+  semester: Number,
 }, { _id: false });
 
 const VersionSchema = new Schema({

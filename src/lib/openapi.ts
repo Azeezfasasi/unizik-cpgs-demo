@@ -155,12 +155,15 @@ const schemas: Json = {
     apiKey: nullable(obj({ name: str(), keyId: str(), expiresAt: nullable(str()), createdAt: str() })),
   }),
   Student: obj({ id: id(), matricNo: str(), surname: str(), otherNames: str(), sex: nullable(str(undefined, { enum: ['M', 'F'] })) }),
-  Course: obj({ code: str(), title: nullable(str()), units: int(), score: nullable(num()), grade: nullable(str(undefined, { enum: ['A', 'B', 'C', 'D', 'E', 'F'] })) }),
+  Course: obj({
+    code: str(), title: nullable(str()), units: int(), score: nullable(num()), grade: nullable(str(undefined, { enum: ['A', 'B', 'C', 'D', 'E', 'F'] })),
+    semester: nullable(int('Semester the course was taken in', { minimum: 1, maximum: 4 })),
+  }),
   RecordSummary: obj({
     id: id(), origin: str(undefined, { enum: ['LEGACY', 'ONLINE'] }), degree: str(), cgpa: nullable(num()), classOfDegree: str(undefined, { enum: CLASS_ENUM }),
     locked: bool(), version: int(), thesisTitle: nullable(str()), senateApprovalDate: nullable(str(undefined, { format: 'date-time' })),
     semesterGpas: { ...arr(num(undefined, { minimum: 0, maximum: 5 })), description: 'GPA per semester in order (1st, 2nd, ...), as on the PG Board result list' },
-    projectGrade: nullable(num('Project / dissertation grade point')), effectiveDate: nullable(str('Effective date of graduation (WEF)', { format: 'date-time' })),
+    projectGrade: nullable(int('Project grade point: 5 = A, 4 = B, 3 = C, 2 = D, 1 = E, 0 = F', { minimum: 0, maximum: 5 })), effectiveDate: nullable(str('Effective date of graduation (WEF)', { format: 'date-time' })),
     boardMeeting: nullable(str('PG Board meeting that considered the result', { example: '63rd' })),
     student: ref('Student'), department: named, programme: obj({ id: id(), name: str(), code: str(), degreeType: str() }), session: obj({ id: id(), label: str() }),
     sheet: { description: 'Result sheet id, or the sheet when expanded', anyOf: [id(), obj({ id: id(), reference: str(), status: str(undefined, { enum: STATUS_ENUM }), origin: str() })] },
@@ -193,11 +196,11 @@ const schemas: Json = {
     cgpa: num('Final CGPA (FCGPA). Give this or classOfDegree', { minimum: 0, maximum: 5 }),
     classOfDegree: str('Optional: worked out from the CGPA with the grading bands when left out (PhD: NOT_APPLICABLE)', { enum: CLASS_ENUM }),
     semesterGpas: { ...arr(num(undefined, { minimum: 0, maximum: 5 })), maxItems: 4, description: 'GPA per semester in order (1st, 2nd, ...)' },
-    projectGrade: num('Project / dissertation grade point', { minimum: 0, maximum: 5 }),
+    projectGrade: int('Project grade point: 5 = A, 4 = B, 3 = C, 2 = D, 1 = E, 0 = F', { minimum: 0, maximum: 5 }),
     effectiveDate: str('Effective date of graduation (WEF), not in the future', { format: 'date' }),
     boardMeeting: str('PG Board meeting, e.g. 63rd'), thesisTitle: str(), supervisor: str(), sourceFile: id('Scan on this sheet the row was read from'),
     sourcePage: int(undefined, { minimum: 1 }), illegible: bool('Flag the row for the Head of Records instead of guessing'), remarks: str(),
-    courses: arr(obj({ code: str(), title: str(), units: int(), score: num(), grade: str() }, ['code', 'units'])),
+    courses: arr(obj({ code: str(), title: str(), units: int(), score: num(), grade: str(), semester: int('1–4, from the semester result sheets', { minimum: 1, maximum: 4 }) }, ['code', 'units'])),
   }, ['matricNo', 'surname', 'otherNames']),
   Batch: obj({
     id: id(), boxCode: str(undefined, { example: 'CRR-BOX-0042' }), department: named, sessions: arr(obj({ id: id(), label: str() })),
@@ -234,7 +237,7 @@ const schemas: Json = {
   }),
   AmendmentRequest: obj({
     cgpa: num(), classOfDegree: str(undefined, { enum: CLASS_ENUM }), thesisTitle: str(), supervisor: str(), senateApprovalDate: str(undefined, { format: 'date' }), remarks: str(),
-    projectGrade: num(), effectiveDate: str('Effective date of graduation (WEF)', { format: 'date' }), boardMeeting: str(),
+    projectGrade: int('Project grade point: 5 = A, 4 = B, 3 = C, 2 = D, 1 = E, 0 = F', { minimum: 0, maximum: 5 }), effectiveDate: str('Effective date of graduation (WEF)', { format: 'date' }), boardMeeting: str(),
     reason: str(undefined, { minLength: 10 }), evidence: id('Id of a file uploaded with purpose AMENDMENT_EVIDENCE'),
   }, ['reason', 'evidence'], { description: 'Send only the fields that change, plus reason and evidence' }),
   AuditEntry: obj({
@@ -389,7 +392,7 @@ const paths: Json = {
   '/sheets/{id}/rows': { put: op('Result sheets', 'Add or update one graduand row (legacy)', 'Indexer assigned to the box, or Taskforce Lead', {
     description: 'Matched by matric number. The same checks as the portal form; CGPA/class mismatches come back as warnings.',
     parameters: [pathId('id', 'Sheet id')],
-    requestBody: jsonBody(ref('GraduandRowInput'), { matricNo: '2014247001', surname: 'OKONKWO', otherNames: 'Chiamaka Grace', sex: 'F', cgpa: 4.28, semesterGpas: [3.9, 4.45], projectGrade: 5, effectiveDate: '2014-03-13', boardMeeting: '63rd', thesisTitle: 'Adoption of improved cassava technologies', supervisor: 'Prof. A. N. Example', sourceFile: '6acd40af9c18c073359430e1', sourcePage: 1, illegible: false, courses: [{ code: 'AEX801', title: 'Research Methods', units: 3, score: 72, grade: 'A' }] }),
+    requestBody: jsonBody(ref('GraduandRowInput'), { matricNo: '2014247001', surname: 'OKONKWO', otherNames: 'Chiamaka Grace', sex: 'F', cgpa: 4.28, semesterGpas: [3.9, 4.45], projectGrade: 5, effectiveDate: '2014-03-13', boardMeeting: '63rd', thesisTitle: 'Adoption of improved cassava technologies', supervisor: 'Prof. A. N. Example', sourceFile: '6acd40af9c18c073359430e1', sourcePage: 1, illegible: false, courses: [{ code: 'AEX801', title: 'Research Methods', units: 3, score: 72, grade: 'A', semester: 1 }] }),
     responses: { 200: actionOk(undefined, { message: '2014247001 saved.' }), ...errs(401, 403, 404, 422, 429) },
   }) },
   '/sheets/{id}/rows/{recordId}': { delete: op('Result sheets', 'Delete a graduand row', 'the editor of an editable sheet', { parameters: [pathId('id', 'Sheet id'), pathId('recordId', 'Row (record) id')], responses: { 200: actionOk(), ...errs(401, 403, 404, 422, 429) } }) },

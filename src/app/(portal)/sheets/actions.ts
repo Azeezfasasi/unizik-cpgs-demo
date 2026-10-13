@@ -218,8 +218,8 @@ export async function decideSheet(sheetId: string, _: ActionState, fd: FormData)
 
 function parseCourses(text: string) {
   return text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).map((line) => {
-    const [code, title, units, score, grade] = line.split('|').map((s) => s.trim());
-    return { code, title, units, score: score || undefined, grade: grade || undefined };
+    const [code, title, units, score, grade, semester] = line.split('|').map((s) => s.trim());
+    return { code, title, units, score: score || undefined, grade: grade || undefined, semester: semester || undefined };
   });
 }
 
