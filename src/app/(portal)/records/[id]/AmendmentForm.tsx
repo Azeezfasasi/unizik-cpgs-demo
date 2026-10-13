@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { ActionForm, SubmitButton } from '@/components/forms';
 import { FileUploader } from '@/components/FileUploader';
-import { CLASS_LABELS, CLASS_OF_DEGREE } from '@/lib/grading';
+import { CLASS_LABELS, CLASS_OF_DEGREE, PROJECT_OPTIONS } from '@/lib/grading';
 import { requestAmendment } from '../../amendments/actions';
 
 type Current = Record<'cgpa' | 'classOfDegree' | 'thesisTitle' | 'supervisor' | 'senateApprovalDate' | 'remarks'
@@ -41,7 +41,10 @@ export function AmendmentForm({ recordId, current }: { recordId: string; current
           </div>
           <div>
             <label className="label" htmlFor="a-project">Project grade</label>
-            <input id="a-project" name="projectGrade" type="number" step="0.01" min="0" max="5" defaultValue={current.projectGrade} className="input" />
+            <select id="a-project" name="projectGrade" defaultValue={current.projectGrade} className="input">
+              <option value="">—</option>
+              {PROJECT_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
           </div>
           <div>
             <label className="label" htmlFor="a-wef">Effective date of graduation (WEF)</label>

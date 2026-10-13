@@ -16,7 +16,7 @@ export const BOARD_COLUMNS = [
 ] as const;
 /** Extra columns for legacy indexing: where each row was read from, and doubtful rows. */
 export const LEGACY_COLUMNS = ['Source Page', 'Illegible (Y/N)', 'Remarks'] as const;
-export const COURSE_COLUMNS = ['Matric No', 'Course Code', 'Course Title', 'Units', 'Score', 'Grade'] as const;
+export const COURSE_COLUMNS = ['Matric No', 'Course Code', 'Course Title', 'Units', 'Score', 'Grade', 'Semester'] as const;
 
 type Column = (typeof GRADUAND_COLUMNS)[number] | (typeof BOARD_COLUMNS)[number] | (typeof LEGACY_COLUMNS)[number];
 type TemplateOptions = { legacy?: boolean };
@@ -56,7 +56,7 @@ export function buildTemplate(meta: { department: string; programme: string; ses
   XLSX.utils.book_append_sheet(wb, g, 'Graduands');
 
   const c = XLSX.utils.aoa_to_sheet([[...COURSE_COLUMNS]]);
-  c['!cols'] = [14, 12, 40, 7, 7, 7].map((wch) => ({ wch }));
+  c['!cols'] = [14, 12, 40, 7, 7, 7, 10].map((wch) => ({ wch }));
   XLSX.utils.book_append_sheet(wb, c, 'Courses');
 
   const info = XLSX.utils.aoa_to_sheet([
@@ -70,10 +70,11 @@ export function buildTemplate(meta: { department: string; programme: string; ses
     ['CGPA', 'Final CGPA (FCGPA) on a 5-point scale with two decimal places.'],
     ['Class of Degree', `Optional: left blank, it is worked out from the CGPA (PhD: Not applicable). If given, one of ${CLASS_OF_DEGREE.join(', ')}.`],
     ['Sem 1 GPA … Sem 4 GPA', 'Optional: the GPA for each semester, as on the PG Board result list. Fill them in order and leave unused semesters blank.'],
-    ['Project', 'Optional: the project / dissertation grade point (0–5).'],
+    ['Project', 'Optional: the project grade point: 5 = A, 4 = B, 3 = C, 2 = D, 1 = E (the letter is accepted too).'],
     ['Effective Date', 'Optional: effective date of graduation (WEF) as DD/MM/YYYY, e.g. 13/03/2014.'],
     ['Board Meeting', 'Optional: the PG Board meeting that considered the result, e.g. 63rd.'],
     ['Courses', 'Each course row repeats the Matric No of the graduand it belongs to. The Courses sheet is optional.'],
+    ['Semester (Courses sheet)', 'Optional: 1, 2, 3 or 4, from the semester result sheets. With grades and units, the semester GPA is checked against Sem 1–4 GPA.'],
     ...(opts.legacy
       ? [
           ['Source Page', 'Page of the scanned result sheet the row was read from (optional).'],
@@ -88,8 +89,8 @@ export function buildTemplate(meta: { department: string; programme: string; ses
     [],
     ['Example Courses rows'],
     [...COURSE_COLUMNS],
-    ['2019247001', 'AEX801', 'Research Methods', 3, 72, 'A'],
-    ['2019247001', 'AEX802', 'Extension Communication', 3, 65, 'B'],
+    ['2019247001', 'AEX801', 'Research Methods', 3, 72, 'A', 1],
+    ['2019247001', 'AEX802', 'Extension Communication', 3, 65, 'B', 2],
   ]);
   info['!cols'] = [{ wch: 34 }, { wch: 80 }];
   XLSX.utils.book_append_sheet(wb, info, 'Instructions');
@@ -184,7 +185,10 @@ export function parseTemplate(buf: ArrayBuffer, opts: { fileName?: string; legac
   courseRaw.forEach((r, i) => {
     const matric = str(r['Matric No']).toUpperCase();
     if (!matric && !str(r['Course Code'])) return;
-    const c = { code: str(r['Course Code']), title: str(r['Course Title']), units: num(r['Units']), score: num(r['Score']), grade: str(r['Grade']) || undefined };
+    const c = {
+      code: str(r['Course Code']), title: str(r['Course Title']), units: num(r['Units']), score: num(r['Score']),
+      grade: str(r['Grade']) || undefined, semester: str(r['Semester']) || undefined,
+    };
     const p = CourseSchema.safeParse(c);
     if (!p.success) {
       for (const iss of p.error.issues) {
@@ -226,7 +230,7 @@ export function parseTemplate(buf: ArrayBuffer, opts: { fileName?: string; legac
       sex: str(cell(r, 'Sex (M/F)')).toUpperCase() || undefined, cgpa: num(cell(r, 'CGPA')),
       classOfDegree: str(cell(r, 'Class of Degree')).toUpperCase().replace(/\s+/g, '_') || undefined,
       semesterGpas: gap >= 0 ? [] : sems.slice(0, lastSem + 1).map(num),
-      projectGrade: num(cell(r, 'Project')), effectiveDate: day(cell(r, 'Effective Date')),
+      projectGrade: str(cell(r, 'Project')) || undefined, effectiveDate: day(cell(r, 'Effective Date')),
       boardMeeting: str(cell(r, 'Board Meeting')),
       thesisTitle: str(cell(r, 'Thesis Title')), supervisor: str(cell(r, 'Supervisor')),
       ...(opts.legacy ? {

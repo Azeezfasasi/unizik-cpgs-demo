@@ -1,7 +1,7 @@
 'use client';
 
 import { ActionForm, SubmitButton } from '@/components/forms';
-import { CLASS_OF_DEGREE, CLASS_LABELS } from '@/lib/grading';
+import { CLASS_OF_DEGREE, CLASS_LABELS, PROJECT_OPTIONS } from '@/lib/grading';
 import type { ActionState } from '@/lib/action-state';
 
 export function LegacyRowForm({ action, files }: {
@@ -51,7 +51,10 @@ export function LegacyRowForm({ action, files }: {
         ))}
         <div>
           <label className="text-xs text-muted" htmlFor="projectGrade">Project</label>
-          <input id="projectGrade" name="projectGrade" type="number" step="0.01" min="0" max="5" className="input" />
+          <select id="projectGrade" name="projectGrade" className="input">
+            <option value="">—</option>
+            {PROJECT_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
         </div>
       </fieldset>
       <div className="grid gap-3 sm:grid-cols-2">
@@ -90,7 +93,7 @@ export function LegacyRowForm({ action, files }: {
       <details>
         <summary className="cursor-pointer text-sm font-medium text-brand">Courses (optional)</summary>
         <textarea name="courses" rows={4} className="input mt-2 font-mono text-xs"
-          placeholder={'One per line: CODE | Title | Units | Score | Grade\nAEX801 | Research Methods | 3 | 72 | A'} />
+          placeholder={'One per line: CODE | Title | Units | Score | Grade | Semester\nAEX801 | Research Methods | 3 | 72 | A | 1'} />
       </details>
       <div>
         <label className="label" htmlFor="remarks">Remarks</label>

@@ -1,7 +1,7 @@
 import 'server-only';
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
 import QRCode from 'qrcode';
-import { CLASS_LABELS, type ClassOfDegree } from './grading';
+import { CLASS_LABELS, fmtProjectGrade, semesterGpa, semesterGroups, type ClassOfDegree } from './grading';
 import { fmtDate } from './format';
 
 export const NAVY = rgb(0x0f / 255, 0x17 / 255, 0x2a / 255);
@@ -30,7 +30,7 @@ export type DocumentData = {
   projectGrade?: number | null;
   effectiveDate?: Date | null;
   version: number;
-  courses: { code: string; title?: string | null; units?: number | null; score?: number | null; grade?: string | null }[];
+  courses: { code: string; title?: string | null; units?: number | null; score?: number | null; grade?: string | null; semester?: number | null }[];
 };
 
 /** Standard fonts only encode WinAnsi: fold diacritics (Ọ → O) and drop anything else. */
@@ -91,8 +91,8 @@ export async function renderResultDocument(input: DocumentData) {
     ['Class of degree', d.classOfDegree ? CLASS_LABELS[d.classOfDegree as ClassOfDegree] ?? d.classOfDegree : '—'],
     ['Senate approval', fmtDate(d.senateApprovalDate)],
   ];
-  if (d.semesterGpas?.length) rows.push(['Semester GPAs', d.semesterGpas.map((g, i) => `${['1st', '2nd', '3rd', '4th'][i]}: ${g.toFixed(2)}`).join('   ')]);
-  if (d.projectGrade != null) rows.push(['Project', d.projectGrade.toFixed(2)]);
+  if (d.semesterGpas?.length) rows.push(['Semester GPAs', d.semesterGpas.map((g, i) => `${['1st', '2nd', '3rd', '4th'][i]}: ${g.toFixed(2)}`).join('  ·  ')]);
+  if (d.projectGrade != null) rows.push(['Project', fmtProjectGrade(d.projectGrade)]);
   if (d.effectiveDate) rows.push(['Effective date of graduation', fmtDate(d.effectiveDate)]);
   if (d.thesisTitle) rows.push(['Thesis / dissertation', d.thesisTitle]);
 
@@ -112,17 +112,36 @@ export async function renderResultDocument(input: DocumentData) {
     ['Code', 'Title', 'Units', 'Score', 'Grade'].forEach((h, i) =>
       page.drawText(h, { x: cols[i], y, size: 9, font: bold, color: NAVY }));
     y -= 14;
-    for (const c of d.courses) {
-      if (y < 120) {
-        page = pdf.addPage([595.28, 841.89]);
-        y = height - M;
+    // Grouped by semester when the semester is recorded (as on the semester result sheets).
+    const groups = semesterGroups(d.courses);
+    for (const [gi, g] of groups.entries()) {
+      if (g.semester != null) {
+        if (y < 140) {
+          page = pdf.addPage([595.28, 841.89]);
+          y = height - M;
+        }
+        if (gi > 0) y -= 4;
+        const gpa = d.semesterGpas?.[g.semester - 1] ?? semesterGpa(g.courses, g.semester);
+        const head = `${['FIRST', 'SECOND', 'THIRD', 'FOURTH'][g.semester - 1]} SEMESTER${gpa != null ? `   ·   GPA ${gpa.toFixed(2)}` : ''}`;
+        page.drawText(head, { x: M, y, size: 8.5, font: bold, color: GREEN });
+        y -= 13;
+      } else if (groups.length > 1) {
+        y -= 4;
+        page.drawText('SEMESTER NOT RECORDED', { x: M, y, size: 8.5, font: bold, color: MUTED });
+        y -= 13;
       }
-      page.drawText(c.code, { x: cols[0], y, size: 9, font, color: BLACK });
-      page.drawText(truncate(c.title ?? '', font, 9, 250), { x: cols[1], y, size: 9, font, color: BLACK });
-      page.drawText(String(c.units ?? ''), { x: cols[2], y, size: 9, font, color: BLACK });
-      page.drawText(c.score != null ? String(c.score) : '', { x: cols[3], y, size: 9, font, color: BLACK });
-      page.drawText(c.grade ?? '', { x: cols[4], y, size: 9, font, color: BLACK });
-      y -= 13;
+      for (const c of g.courses) {
+        if (y < 120) {
+          page = pdf.addPage([595.28, 841.89]);
+          y = height - M;
+        }
+        page.drawText(c.code, { x: cols[0], y, size: 9, font, color: BLACK });
+        page.drawText(truncate(c.title ?? '', font, 9, 250), { x: cols[1], y, size: 9, font, color: BLACK });
+        page.drawText(String(c.units ?? ''), { x: cols[2], y, size: 9, font, color: BLACK });
+        page.drawText(c.score != null ? String(c.score) : '', { x: cols[3], y, size: 9, font, color: BLACK });
+        page.drawText(c.grade ?? '', { x: cols[4], y, size: 9, font, color: BLACK });
+        y -= 13;
+      }
     }
     const units = d.courses.reduce((s, c) => s + (c.units ?? 0), 0);
     y -= 4;

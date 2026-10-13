@@ -46,3 +46,63 @@ export function scoreToGrade(score: number) {
   if (score >= 50) return 'C';
   return 'F';
 }
+
+/** CPGS grade points (5-point scale): also how the project grade is recorded on the PG Board result list. */
+export const GRADE_POINTS = { A: 5, B: 4, C: 3, D: 2, E: 1, F: 0 } as const;
+export type Letter = keyof typeof GRADE_POINTS;
+
+/** Letter for a whole grade point (5 → A … 0 → F), or null. */
+export function gradeLetter(points?: number | null): Letter | null {
+  if (points == null || !Number.isInteger(points) || points < 0 || points > 5) return null;
+  return 'FEDCBA'[points] as Letter;
+}
+
+/** Project grade as shown to people, e.g. "5.00 (A)". */
+export function fmtProjectGrade(points?: number | null) {
+  if (points == null) return '—';
+  const l = gradeLetter(points);
+  return l ? `${points.toFixed(2)} (${l})` : points.toFixed(2);
+}
+
+type GradedCourse = { units?: number | null; grade?: string | null; semester?: number | null };
+
+/** GPA of the courses taken in one semester, from units and letter grades; null when none are graded. */
+export function semesterGpa(courses: GradedCourse[], semester: number) {
+  let units = 0, points = 0;
+  for (const c of courses) {
+    const gp = c.grade ? GRADE_POINTS[c.grade as Letter] : undefined;
+    if (c.semester !== semester || !c.units || gp == null) continue;
+    units += c.units;
+    points += c.units * gp;
+  }
+  return units ? Math.round((points / units) * 100) / 100 : null;
+}
+
+/** Warnings where a semester GPA worked out from the courses differs from the one recorded. */
+export function semesterGpaWarnings(courses: GradedCourse[], recorded: number[] = []) {
+  const ORD = ['1st', '2nd', '3rd', '4th'];
+  return recorded.flatMap((gpa, i) => {
+    const fromCourses = semesterGpa(courses, i + 1);
+    return fromCourses != null && Math.abs(fromCourses - gpa) > 0.01
+      ? [`${ORD[i]} semester GPA from the courses is ${fromCourses.toFixed(2)}, but ${gpa.toFixed(2)} was recorded`]
+      : [];
+  });
+}
+
+/** Choices for a project grade input: value is the grade point, label e.g. "5.00 (A)". */
+export const PROJECT_OPTIONS = Object.entries(GRADE_POINTS).map(([l, p]) => [String(p), `${p.toFixed(2)} (${l})`] as const);
+
+/**
+ * Courses grouped by semester in order (1st, 2nd, ...), with courses whose semester was not
+ * recorded last (semester null). A single group when no semester is recorded at all.
+ */
+export function semesterGroups<T extends { semester?: number | null }>(courses: T[]) {
+  const by = new Map<number | null, T[]>();
+  for (const c of courses) {
+    const k = c.semester ?? null;
+    by.set(k, [...(by.get(k) ?? []), c]);
+  }
+  return [...by.entries()]
+    .sort(([a], [b]) => (a ?? 99) - (b ?? 99))
+    .map(([semester, list]) => ({ semester, courses: list }));
+}

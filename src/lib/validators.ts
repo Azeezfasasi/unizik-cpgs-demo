@@ -1,6 +1,16 @@
 import { z } from 'zod';
-import { CLASS_OF_DEGREE } from './grading';
+import { CLASS_OF_DEGREE, GRADE_POINTS, type Letter } from './grading';
 import { ROLES } from './rbac';
+
+/** "1", "1st", "First", "Sem 1" → 1; anything else is left for the validator to reject. */
+function semesterNumber(v: string) {
+  const t = v.trim().toLowerCase();
+  if (!t) return undefined;
+  const words = ['first', 'second', 'third', 'fourth'].indexOf(t.replace(/\s*sem(ester)?$/, ''));
+  if (words >= 0) return words + 1;
+  const m = t.match(/^(?:sem(?:ester)?\s*)?([1-4])(?:st|nd|rd|th)?(?:\s*sem(?:ester)?)?$/);
+  return m ? Number(m[1]) : v;
+}
 
 const optStr = z.string().trim().max(500).optional().transform((v) => v || undefined);
 const objectId = z.string().regex(/^[a-f0-9]{24}$/i, 'Invalid id');
@@ -11,6 +21,11 @@ export const CourseSchema = z.object({
   units: z.coerce.number().int().min(0).max(30),
   score: z.coerce.number().min(0).max(100).optional(),
   grade: z.string().trim().toUpperCase().regex(/^[A-F]$/, 'Grade must be A–F').optional(),
+  /** Semester the course was taken in (1–4), as on the semester result sheets. */
+  semester: z.preprocess(
+    (v) => (typeof v === 'string' ? semesterNumber(v) : v),
+    z.coerce.number({ message: 'Semester must be 1–4' }).int('Semester must be 1–4').min(1, 'Semester must be 1–4').max(4, 'Semester must be 1–4'),
+  ).optional(),
 });
 
 const gpa = (label: string) => z.coerce.number({ message: `${label} must be a number` })
@@ -32,7 +47,13 @@ export const GraduandRowSchema = z.object({
   /** Left out: worked out from the CGPA with the grading bands when the row is saved. */
   classOfDegree: z.enum(CLASS_OF_DEGREE, { message: `Class must be one of ${CLASS_OF_DEGREE.join(', ')}` }).optional(),
   semesterGpas: z.array(gpa('Semester GPA')).max(4, 'At most 4 semester GPAs').default([]),
-  projectGrade: gpa('Project grade').optional(),
+  /** Whole grade point (5 = A, 4 = B, 3 = C, 2 = D, 1 = E, 0 = F); the letter is accepted too. */
+  projectGrade: z.preprocess(
+    (v) => (typeof v === 'string' && /^[A-F]$/i.test(v.trim()) ? GRADE_POINTS[v.trim().toUpperCase() as Letter] : v),
+    z.coerce.number({ message: 'Project grade must be a grade point or letter' })
+      .int('Project grade must be a whole grade point: 5 = A, 4 = B, 3 = C, 2 = D, 1 = E')
+      .min(0, 'Project grade must be 0–5').max(5, 'Project grade must be 0–5'),
+  ).optional(),
   effectiveDate: pastDay('Effective date of graduation').optional(),
   /** Stored as the meeting alone ("63rd"), so "63rd PG Board Meeting" and "63rd" are the same. */
   boardMeeting: z.string().trim().max(60).optional()

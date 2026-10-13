@@ -7,7 +7,7 @@ import { db } from '@/lib/db';
 import { requirePage, scopedDepartmentIds } from '@/lib/auth';
 import { audit } from '@/lib/audit';
 import { can } from '@/lib/rbac';
-import { CLASS_LABELS, type ClassOfDegree } from '@/lib/grading';
+import { CLASS_LABELS, semesterGpa, semesterGroups, type ClassOfDegree } from '@/lib/grading';
 import { boardDetails, fmtDate, fmtDateTime, fullName, titleCase, type BoardFields } from '@/lib/format';
 import { Amendment, GraduandRecord, ResultSheet, StoredFile, Verification } from '@/models';
 import { Alert, Badge, Card, DetailList, PageHeader, StatusBadge, PageSkeleton } from '@/components/ui';
@@ -22,7 +22,7 @@ type Rec = BoardFields & {
   _id: Types.ObjectId; degree: string; cgpa?: number; classOfDegree?: string; thesisTitle?: string; supervisor?: string;
   senateApprovalDate?: Date; locked: boolean; version: number; origin: string; illegible: boolean; remarks?: string;
   sourceFile?: Types.ObjectId; sourcePage?: number; createdAt: Date; updatedAt: Date;
-  courses: { code: string; title?: string; units?: number; score?: number; grade?: string }[];
+  courses: { code: string; title?: string; units?: number; score?: number; grade?: string; semester?: number }[];
   history: { version: number; data: Record<string, unknown>; at: Date }[];
   student: { matricNo: string; surname: string; otherNames: string; sex?: string };
   department: { _id: Types.ObjectId; name: string; faculty: { name: string } };
@@ -119,11 +119,25 @@ async function RecordPageContent({ params }: PageProps<'/records/[id]'>) {
               <div className="overflow-x-auto">
                 <table className="table">
                   <thead><tr><th>Code</th><th>Title</th><th className="text-right">Units</th><th className="text-right">Score</th><th>Grade</th></tr></thead>
-                  <tbody>
-                    {r.courses.map((c, i) => (
-                      <tr key={i}><td className="font-mono text-xs">{c.code}</td><td>{c.title}</td><td className="text-right">{c.units}</td><td className="text-right">{c.score ?? '—'}</td><td>{c.grade ?? '—'}</td></tr>
-                    ))}
-                  </tbody>
+                  {/* Grouped by semester when recorded; the GPA is the one on the board list, else worked out from the courses. */}
+                  {semesterGroups(r.courses).map((g) => {
+                    const gpa = g.semester != null ? r.semesterGpas?.[g.semester - 1] ?? semesterGpa(g.courses, g.semester) : null;
+                    return (
+                      <tbody key={g.semester ?? 'none'}>
+                        {(g.semester != null || r.courses.some((c) => c.semester)) && (
+                          <tr className="bg-slate-50">
+                            <td colSpan={5} className="text-xs font-semibold text-navy">
+                              {g.semester != null ? `${['1st', '2nd', '3rd', '4th'][g.semester - 1]} semester` : 'Semester not recorded'}
+                              {gpa != null && <span className="ml-2 font-normal text-muted tabular-nums">GPA {gpa.toFixed(2)}</span>}
+                            </td>
+                          </tr>
+                        )}
+                        {g.courses.map((c, i) => (
+                          <tr key={i}><td className="font-mono text-xs">{c.code}</td><td>{c.title}</td><td className="text-right">{c.units}</td><td className="text-right">{c.score ?? '—'}</td><td>{c.grade ?? '—'}</td></tr>
+                        ))}
+                      </tbody>
+                    );
+                  })}
                 </table>
               </div>
             </Card>

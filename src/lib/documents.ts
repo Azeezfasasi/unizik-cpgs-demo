@@ -24,7 +24,7 @@ export function documentLinkValid(verificationId: string, exp: number, token: st
 type Populated = {
   version: number; degree: string; cgpa?: number; classOfDegree?: string; thesisTitle?: string; senateApprovalDate?: Date;
   semesterGpas?: number[]; projectGrade?: number; effectiveDate?: Date;
-  courses: { code: string; title?: string; units?: number; score?: number; grade?: string }[];
+  courses: { code: string; title?: string; units?: number; score?: number; grade?: string; semester?: number }[];
   student: { matricNo: string; surname: string; otherNames: string; sex?: string };
   department: { name: string; faculty: { name: string } }; session: { label: string };
 };

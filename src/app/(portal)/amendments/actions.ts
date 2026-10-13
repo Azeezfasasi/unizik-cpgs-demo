@@ -24,6 +24,7 @@ function normalise(field: AmendableField, raw: string) {
   if (field === 'cgpa' || field === 'projectGrade') {
     const n = Number(v);
     if (isNaN(n) || n < 0 || n > 5) fail(`${field === 'cgpa' ? 'CGPA' : 'Project grade'} must be between 0 and 5`);
+    if (field === 'projectGrade' && !Number.isInteger(n)) fail('Project grade must be a whole grade point: 5 = A, 4 = B, 3 = C, 2 = D, 1 = E');
     return Math.round(n * 100) / 100;
   }
   if (field === 'classOfDegree' && !(CLASS_OF_DEGREE as readonly string[]).includes(v)) fail('Invalid class of degree');

@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import { Types } from 'mongoose';
 import { Department, GraduandRecord, Programme, ResultSheet, Student, User } from '@/models';
 import type { ResultSheetDoc } from '@/models/ResultSheet';
-import { classConsistency, expectedClass, type ClassOfDegree } from './grading';
+import { classConsistency, expectedClass, semesterGpaWarnings, type ClassOfDegree } from './grading';
 import { getGradingBands } from './settings';
 import type { GraduandRow } from './validators';
 import { FLOW, STATUS_LABELS, type FlowStage } from './workflow';
@@ -44,6 +44,7 @@ export async function checkRow(sheet: SheetLike, row: GraduandRow, degreeType?: 
   if (row.courses.some((x) => x.score != null && x.grade && gradeMismatch(x.score, x.grade))) {
     warnings.push('One or more course grades do not match their scores');
   }
+  warnings.push(...semesterGpaWarnings(row.courses, row.semesterGpas));
   return { errors, warnings };
 }
 
@@ -112,7 +113,8 @@ export async function snapshotRows(sheetId: Types.ObjectId) {
     cgpa: r.cgpa ?? null, classOfDegree: r.classOfDegree ?? null, thesisTitle: r.thesisTitle ?? null,
     // PG Board list fields, folded into one value so they appear in diffs and the fingerprint only when present.
     board: boardSummary(r),
-    courses: (r.courses ?? []).map((c) => `${c.code}:${c.units}:${c.score ?? ''}:${c.grade ?? ''}`).join('|'),
+    // The semester is appended only when set, so courses recorded before it existed keep the same fingerprint.
+    courses: (r.courses ?? []).map((c) => `${c.code}:${c.units}:${c.score ?? ''}:${c.grade ?? ''}${c.semester ? `:s${c.semester}` : ''}`).join('|'),
   }));
 }
 

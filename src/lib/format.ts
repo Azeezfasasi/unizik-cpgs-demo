@@ -1,3 +1,5 @@
+import { fmtProjectGrade } from './grading';
+
 export const esc = (s: unknown) =>
   String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 
@@ -31,7 +33,7 @@ export type BoardFields = {
 export function boardDetails(r: BoardFields): [string, string][] {
   const out: [string, string][] = [];
   if (r.semesterGpas?.length) out.push(['Semester GPAs', r.semesterGpas.map((g) => g.toFixed(2)).join(' / ')]);
-  if (r.projectGrade != null) out.push(['Project', r.projectGrade.toFixed(2)]);
+  if (r.projectGrade != null) out.push(['Project', fmtProjectGrade(r.projectGrade)]);
   if (r.effectiveDate) out.push(['Effective date of graduation', fmtDate(r.effectiveDate)]);
   if (r.boardMeeting) out.push(['PG Board meeting', r.boardMeeting]);
   return out;
@@ -42,7 +44,7 @@ export function boardLine(r: BoardFields) {
   const dmy = (d: Date | string) => new Date(d).toISOString().slice(0, 10).split('-').reverse().join('/');
   return [
     r.semesterGpas?.length ? `Sem ${r.semesterGpas.map((g) => g.toFixed(2)).join(' / ')}` : '',
-    r.projectGrade != null ? `Proj ${r.projectGrade.toFixed(2)}` : '',
+    r.projectGrade != null ? `Proj ${fmtProjectGrade(r.projectGrade)}` : '',
     r.effectiveDate ? `WEF ${dmy(r.effectiveDate)}` : '',
     r.boardMeeting ? `${r.boardMeeting} Board` : '',
   ].filter(Boolean).join('  ·  ');
