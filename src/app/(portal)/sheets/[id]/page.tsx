@@ -1,4 +1,4 @@
-import { Suspense } from 'react';
+import { Suspense, type ReactNode } from 'react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Types } from 'mongoose';
@@ -8,7 +8,7 @@ import { requireUser } from '@/lib/auth';
 import { audit } from '@/lib/audit';
 import { can } from '@/lib/rbac';
 import { canEdit, canView } from '@/lib/sheet-access';
-import { diffSnapshots, type RowSnapshot } from '@/lib/sheets';
+import { diffSnapshots, rowFingerprint, snapshotRows, type RowSnapshot } from '@/lib/sheets';
 import { FLOW, LEGACY_STEPS, ONLINE_STEPS, STATUS_LABELS, type FlowStage } from '@/lib/workflow';
 import { fmtDate, fmtDateTime, fullName, minutesSince } from '@/lib/format';
 import { classConsistency } from '@/lib/grading';
@@ -52,6 +52,8 @@ async function SheetPageContent({ params }: PageProps<'/sheets/[id]'>) {
       .lean(),
     getGradingBands(),
   ]);
+  // Same code that is printed in the footer of the sheet for signing.
+  const fingerprint = records.length ? rowFingerprint(await snapshotRows(sheet._id)) : null;
   records.sort((a, b) => a.student.matricNo.localeCompare(b.student.matricNo));
   await audit(user, 'sheet.view', 'ResultSheet', id);
 
@@ -139,8 +141,23 @@ async function SheetPageContent({ params }: PageProps<'/sheets/[id]'>) {
                   </ActionForm>
                 </li>
                 <li>
-                  <div className="font-medium text-navy">3. Attach the signed scan</div>
-                  <p className="mt-1 text-muted">Use the upload box beside the scan viewer. The scan remains the legal source.</p>
+                  <div className="font-medium text-navy">3. Print, sign, stamp and attach the result sheet</div>
+                  <p className="mt-1 text-muted">
+                    Download the result sheet built from your uploaded rows, print it, and have it signed by the PG Coordinator,
+                    Head of Department and External Examiner, then stamped. Scan it (PDF, 300 dpi, colour, all pages) and attach it
+                    with the upload box beside the scan viewer. The signed scan remains the legal source.
+                  </p>
+                  {fingerprint ? (
+                    <>
+                      <a className="btn-outline mt-2" href={`/api/sheets/${id_}/signing-sheet`} target="_blank" rel="noreferrer">Download sheet for signing (PDF)</a>
+                      <p className="mt-2 text-xs text-muted">
+                        Its footer shows row fingerprint <span className="font-mono font-semibold text-navy">{fingerprint}</span>.
+                        If you re-upload the template with changes, print and sign a new sheet: the fingerprint will change.
+                      </p>
+                    </>
+                  ) : (
+                    <p className="mt-2 text-xs text-amber-800">Upload the filled template first; the sheet for signing is built from its rows.</p>
+                  )}
                 </li>
                 <li>
                   <div className="font-medium text-navy">4. Submit for approval</div>
@@ -168,6 +185,12 @@ async function SheetPageContent({ params }: PageProps<'/sheets/[id]'>) {
               ) : null}
               {sheet.status === 'FACULTY_APPROVED' && (
                 <p className="mb-3 text-sm text-muted">Records verification: compare every row with the attached signed scan before approving.</p>
+              )}
+              {fingerprint && (
+                <p className="mb-3 text-sm text-muted">
+                  Check that the attached scan is signed and stamped, and that its footer shows row fingerprint{' '}
+                  <span className="font-mono font-semibold text-navy">{fingerprint}</span>. A different code means the rows changed after signing: return the sheet.
+                </p>
               )}
               <ActionForm action={decideSheet.bind(null, id_)} className="space-y-3">
                 {stage.next === 'SENATE_APPROVED' && (
@@ -292,6 +315,7 @@ async function SheetPageContent({ params }: PageProps<'/sheets/[id]'>) {
               ['Session', session?.label],
               ['Box', batch ? <Link className="link" href={`/digitization/batches/${batch._id}`}>{batch.boxCode}</Link> : '—'],
               ['Senate approval', fmtDate(sheet.senateApprovalDate)],
+              ...(online && fingerprint ? [['Row fingerprint', <span key="fp" className="font-mono font-semibold text-navy">{fingerprint}</span>] as [string, ReactNode]] : []),
               ['Created', fmtDateTime(sheet.createdAt)],
               ['Last change', fmtDateTime(sheet.statusSince)],
             ]} />

@@ -4,11 +4,11 @@ import QRCode from 'qrcode';
 import { CLASS_LABELS, type ClassOfDegree } from './grading';
 import { fmtDate } from './format';
 
-const NAVY = rgb(0x0f / 255, 0x17 / 255, 0x2a / 255);
-const TEAL = rgb(0, 0x96 / 255, 0x89 / 255);
-const GREEN = rgb(0, 0x7a / 255, 0x55 / 255);
-const MUTED = rgb(0.28, 0.33, 0.41);
-const BLACK = rgb(0, 0, 0);
+export const NAVY = rgb(0x0f / 255, 0x17 / 255, 0x2a / 255);
+export const TEAL = rgb(0, 0x96 / 255, 0x89 / 255);
+export const GREEN = rgb(0, 0x7a / 255, 0x55 / 255);
+export const MUTED = rgb(0.28, 0.33, 0.41);
+export const BLACK = rgb(0, 0, 0);
 
 export type DocumentData = {
   kind: 'STATEMENT_OF_RESULT' | 'TRANSCRIPT';
@@ -31,7 +31,7 @@ export type DocumentData = {
 };
 
 /** Standard fonts only encode WinAnsi: fold diacritics (Ọ → O) and drop anything else. */
-function safe(s: string) {
+export function safe(s: string) {
   return s.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\x20-\x7E -ÿ–—…·]/g, '?');
 }
 
@@ -136,7 +136,7 @@ export async function renderResultDocument(input: DocumentData) {
   return pdf.save();
 }
 
-function truncate(s: string, font: PDFFont, size: number, max: number) {
+export function truncate(s: string, font: PDFFont, size: number, max: number) {
   if (font.widthOfTextAtSize(s, size) <= max) return s;
   while (s.length && font.widthOfTextAtSize(s + '…', size) > max) s = s.slice(0, -1);
   return s + '…';
