@@ -4,15 +4,15 @@ import { promises as fs } from 'fs';
 import { cronAuthorized } from '@/lib/cron';
 import { db } from '@/lib/db';
 import { audit } from '@/lib/audit';
-import { readLocal, signedViewUrl } from '@/lib/storage';
+import { cloudinaryDownloadUrl, readLocal } from '@/lib/storage';
 import { StoredFile } from '@/models';
 
 export const maxDuration = 300;
 const BATCH = 100;
 
-async function fetchBytes(file: Parameters<typeof signedViewUrl>[0] & { storage: string; publicId: string }) {
+async function fetchBytes(file: Parameters<typeof cloudinaryDownloadUrl>[0]) {
   if (file.storage === 'local') return readLocal(file.publicId);
-  const res = await fetch(signedViewUrl(file));
+  const res = await fetch(cloudinaryDownloadUrl(file));
   if (!res.ok) throw new Error(`download ${res.status}`);
   return Buffer.from(await res.arrayBuffer());
 }

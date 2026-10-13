@@ -34,6 +34,9 @@ export const PERMISSIONS = {
   'amendment:approve':  ['PROVOST'],
   'transcript:issue':   ['SUPER_ADMIN', 'HEAD_RECORDS'],
   'audit:read':         ['SUPER_ADMIN', 'AUDITOR', 'PROVOST'],
+  'files:read':         ['SUPER_ADMIN', 'HEAD_RECORDS', 'PROVOST', 'AUDITOR'],
+  'files:manage':       ['SUPER_ADMIN', 'HEAD_RECORDS'],
+  'files:delete':       ['SUPER_ADMIN'],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Permission = keyof typeof PERMISSIONS;

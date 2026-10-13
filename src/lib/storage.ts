@@ -5,15 +5,21 @@ import { promises as fs } from 'fs';
 import { v2 as cloudinary } from 'cloudinary';
 
 /**
- * File storage. Production uses Cloudinary `authenticated` assets (no public URL ever exists).
- * When Cloudinary is not configured (local development) files go to ./storage on disk,
- * served only through the same short-lived signed links.
+ * File storage. Production uses Cloudinary `authenticated` assets (no public URL ever exists),
+ * uploaded straight from the browser. Local disk (./storage) is a development fallback only:
+ * on Vercel the disk is temporary and per-instance, and request bodies are capped at 4.5 MB,
+ * so without Cloudinary the driver is 'unconfigured' and uploads are refused.
  */
-export type StorageDriver = 'cloudinary' | 'local';
+export type StorageDriver = 'cloudinary' | 'local' | 'unconfigured';
+
+const hasCloudinary = () =>
+  !!(process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET);
 
 export const storageDriver = (): StorageDriver =>
-  process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET
-    ? 'cloudinary' : 'local';
+  hasCloudinary() ? 'cloudinary' : process.env.VERCEL ? 'unconfigured' : 'local';
+
+export const STORAGE_NOT_CONFIGURED =
+  'File storage is not configured on this server. Ask the ICT unit to add the Cloudinary keys (CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET).';
 
 let configured = false;
 function cld() {
@@ -51,6 +57,16 @@ export async function confirmCloudinaryAsset(publicId: string, resourceType: str
   return { format: r.format as string, pages: r.pages as number | undefined };
 }
 
+type FileRef = { _id: unknown; storage: string; publicId: string; resourceType?: string | null; format?: string | null };
+
+/** Server-side signed download link for a private Cloudinary asset (never sent to the browser). */
+export function cloudinaryDownloadUrl(file: FileRef, ttlSeconds = VIEW_TTL_SECONDS) {
+  return cld().utils.private_download_url(file.publicId, file.format ?? 'pdf', {
+    type: 'authenticated', resource_type: file.resourceType ?? 'image',
+    expires_at: Math.floor(Date.now() / 1000) + ttlSeconds,
+  });
+}
+
 // ---------- local driver ----------
 
 const LOCAL_ROOT = path.join(process.cwd(), 'storage');
@@ -69,29 +85,28 @@ export async function saveLocal(publicId: string, data: Buffer) {
 
 export const readLocal = (publicId: string) => fs.readFile(localPath(publicId));
 
-function localToken(fileId: string, exp: number) {
+// ---------- signed same-origin view links ----------
+
+function viewToken(fileId: string, exp: number) {
   return crypto.createHmac('sha256', process.env.AUTH_SECRET!).update(`${fileId}:${exp}`).digest('base64url');
 }
 
-export function verifyLocalToken(fileId: string, exp: number, token: string) {
+export function verifyViewToken(fileId: string, exp: number, token: string) {
   if (!exp || exp < Math.floor(Date.now() / 1000)) return false;
-  const expected = Buffer.from(localToken(fileId, exp));
+  const expected = Buffer.from(viewToken(fileId, exp));
   const given = Buffer.from(token);
   return expected.length === given.length && crypto.timingSafeEqual(expected, given);
 }
 
-// ---------- shared ----------
-
-/** Signed link valid for five minutes. */
-export function signedViewUrl(file: { _id: unknown; storage: string; publicId: string; resourceType?: string | null; format?: string | null }) {
+/**
+ * Signed link valid for five minutes, always on this site (`/api/files/[id]/raw`), whatever the
+ * storage. The server streams the file, so the in-app viewer is never blocked by a third party's
+ * framing or download headers, and Cloudinary credentials never reach the browser.
+ */
+export function signedViewUrl(file: FileRef) {
   const exp = Math.floor(Date.now() / 1000) + VIEW_TTL_SECONDS;
-  if (file.storage === 'local') {
-    const id = String(file._id);
-    return `/api/files/${id}/raw?exp=${exp}&token=${localToken(id, exp)}`;
-  }
-  return cld().utils.private_download_url(file.publicId, file.format ?? 'pdf', {
-    type: 'authenticated', resource_type: file.resourceType ?? 'image', expires_at: exp,
-  });
+  const id = String(file._id);
+  return `/api/files/${id}/raw?exp=${exp}&token=${viewToken(id, exp)}`;
 }
 
 export function folderFor(origin: 'legacy' | 'online' | 'amendments', deptCode: string, session?: string) {

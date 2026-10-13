@@ -52,6 +52,8 @@ export async function uploadTarget(user: CurrentUser, purpose: string, scope: { 
 /** Whether the user may open a stored file. */
 export async function canOpenFile(user: CurrentUser, file: Pick<StoredFileDoc, '_id' | 'purpose' | 'uploadedBy'>) {
   if (file.uploadedBy.equals(user.id)) return true;
+  // Custodians of the file register (File storage page) may open any file.
+  if (can(user.role, 'files:read')) return true;
   if (file.purpose === 'AMENDMENT_EVIDENCE') {
     return can(user.role, 'amendment:request') || can(user.role, 'amendment:approve') || can(user.role, 'audit:read');
   }
