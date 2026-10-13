@@ -8,7 +8,7 @@ import { run } from '@/lib/action';
 import { assertInScope, requirePermission, type CurrentUser } from '@/lib/auth';
 import { assertCanEdit } from '@/lib/sheet-access';
 import { audit } from '@/lib/audit';
-import { fail } from '@/lib/errors';
+import { fail, missing } from '@/lib/errors';
 import { withTxn } from '@/lib/txn';
 import { FLOW, type FlowStage } from '@/lib/workflow';
 import { checkRow, notifySheet, refreshCount, snapshotRows, upsertGraduand } from '@/lib/sheets';
@@ -21,10 +21,10 @@ import type { ResultSheetDoc } from '@/models/ResultSheet';
 type Sheet = ResultSheetDoc;
 
 async function loadSheet(id: string) {
-  if (!Types.ObjectId.isValid(id)) fail('Sheet not found');
+  if (!Types.ObjectId.isValid(id)) missing('Sheet not found');
   await db();
   const sheet = await ResultSheet.findById(id);
-  if (!sheet) fail('Sheet not found');
+  if (!sheet) missing('Sheet not found');
   return sheet!;
 }
 
@@ -53,8 +53,9 @@ export async function createOnlineSheet(_: ActionState, fd: FormData): Promise<A
     await audit(user, 'sheet.create', 'ResultSheet', sheet.id, undefined, { origin: 'ONLINE', reference: sheet.reference });
     id = sheet.id;
   });
-  if (id) redirect(`/sheets/${id}`);
-  return res;
+  // Portal forms go to the new item; REST API calls (fd __api=1) get its id instead.
+  if (id && fd.get('__api') !== '1') redirect(`/sheets/${id}`);
+  return id ? { ...res, data: { id } } : res;
 }
 
 const CreateLegacy = z.object({ batch: objectId, programme: objectId, session: objectId });
@@ -65,7 +66,7 @@ export async function createLegacySheet(_: ActionState, fd: FormData): Promise<A
     const user = await requirePermission('legacy:upload');
     const { batch, programme, session } = CreateLegacy.parse(Object.fromEntries(fd));
     const b = await DigitizationBatch.findById(batch);
-    if (!b) fail('Box not found');
+    if (!b) missing('Box not found');
     if (user.role === 'INDEXER' && !b!.indexer?.equals(user.id)) fail('This box is not assigned to you');
     const prog = await Programme.findById(programme).lean();
     if (!prog || !prog.department.equals(b!.department)) fail('Programme must belong to the box department');
@@ -77,8 +78,9 @@ export async function createLegacySheet(_: ActionState, fd: FormData): Promise<A
     await audit(user, 'sheet.create', 'ResultSheet', sheet.id, undefined, { origin: 'LEGACY', reference: sheet.reference, batch: b!.boxCode });
     id = sheet.id;
   });
-  if (id) redirect(`/sheets/${id}`);
-  return res;
+  // Portal forms go to the new item; REST API calls (fd __api=1) get its id instead.
+  if (id && fd.get('__api') !== '1') redirect(`/sheets/${id}`);
+  return id ? { ...res, data: { id } } : res;
 }
 
 // ---------------------------------------------------------------- files
@@ -89,7 +91,7 @@ export async function attachFile(sheetId: string, fileId: string): Promise<Actio
     const sheet = await loadSheet(sheetId);
     await assertCanEdit(user, sheet);
     const file = await StoredFile.findById(fileId).lean();
-    if (!file || !file.uploadedBy.equals(user.id)) fail('File not found');
+    if (!file || !file.uploadedBy.equals(user.id)) missing('File not found');
     if (!file!.department?.equals(sheet.department)) fail('File belongs to another department');
     if (!sheet.files.some((f) => f.equals(fileId))) sheet.files.push(new Types.ObjectId(fileId));
     await sheet.save();
@@ -184,7 +186,7 @@ export async function decideSheet(sheetId: string, _: ActionState, fd: FormData)
     let next = '';
     await withTxn(async (session) => {
       const sheet = await ResultSheet.findById(sheetId).session(session);
-      if (!sheet || sheet.origin !== 'ONLINE') fail('Sheet not found');
+      if (!sheet || sheet.origin !== 'ONLINE') missing('Sheet not found');
       const step = FLOW[sheet!.status as FlowStage];
       if (!step || step.role !== user.role) fail('This sheet is not at your stage');
       await assertInScope(user, sheet!.department);
@@ -312,7 +314,7 @@ export async function deleteRow(sheetId: string, _: ActionState, fd: FormData): 
     await assertCanEdit(user, sheet);
     const recordId = String(fd.get('recordId'));
     const rec = await GraduandRecord.findOne({ _id: recordId, sheet: sheet._id, locked: false });
-    if (!rec) fail('Row not found');
+    if (!rec) missing('Row not found');
     await rec!.deleteOne();
     await refreshCount(sheet._id);
     await audit(user, 'record.delete', 'GraduandRecord', recordId, { sheet: sheet.reference, cgpa: rec!.cgpa, classOfDegree: rec!.classOfDegree });

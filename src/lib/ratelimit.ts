@@ -31,3 +31,4 @@ function make(prefix: string, max: number, window: `${number} m`): Limiter {
 
 export const loginLimiter = make('login', 10, '15 m');
 export const verifyLimiter = make('verify', 30, '1 m');
+export const apiLimiter = make('api', 120, '1 m');

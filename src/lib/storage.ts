@@ -57,6 +57,18 @@ export async function confirmCloudinaryAsset(publicId: string, resourceType: str
   return { format: r.format as string, pages: r.pages as number | undefined };
 }
 
+/** Server-side upload of a private asset (used by the REST API; the portal uploads from the browser). */
+export function uploadToCloudinary(data: Buffer, folder: string): Promise<{ publicId: string; resourceType: string; format: string; bytes: number; pages?: number }> {
+  return new Promise((resolve, reject) => {
+    const stream = cld().uploader.upload_stream(
+      { folder, type: 'authenticated', resource_type: 'image', allowed_formats: ALLOWED_FORMATS },
+      (err, r) => (err || !r ? reject(err ?? new Error('Upload failed'))
+        : resolve({ publicId: r.public_id, resourceType: r.resource_type, format: r.format, bytes: r.bytes, pages: r.pages })),
+    );
+    stream.end(data);
+  });
+}
+
 type FileRef = { _id: unknown; storage: string; publicId: string; resourceType?: string | null; format?: string | null };
 
 /** Server-side signed download link for a private Cloudinary asset (never sent to the browser). */

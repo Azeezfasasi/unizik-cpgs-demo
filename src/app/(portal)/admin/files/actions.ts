@@ -6,7 +6,7 @@ import { db } from '@/lib/db';
 import { run } from '@/lib/action';
 import { requirePermission } from '@/lib/auth';
 import { audit } from '@/lib/audit';
-import { fail } from '@/lib/errors';
+import { fail, missing } from '@/lib/errors';
 import { destroyAsset, isLinked, linksFor, verifyIntegrity } from '@/lib/files';
 import { storageDriver } from '@/lib/storage';
 import type { ActionState } from '@/lib/action-state';
@@ -15,10 +15,10 @@ import { StoredFile } from '@/models';
 export async function verifyFile(fileId: string): Promise<ActionState> {
   return run(async () => {
     const user = await requirePermission('files:manage');
-    if (!Types.ObjectId.isValid(fileId)) fail('File not found');
+    if (!Types.ObjectId.isValid(fileId)) missing('File not found');
     await db();
     const file = await StoredFile.findById(fileId).lean();
-    if (!file) fail('File not found');
+    if (!file) missing('File not found');
     const r = await verifyIntegrity(file);
     await audit(user, 'file.verify', 'StoredFile', fileId, undefined, { result: r.status, detail: r.detail });
     const text = {
@@ -33,11 +33,11 @@ export async function verifyFile(fileId: string): Promise<ActionState> {
 export async function deleteFile(fileId: string, _: ActionState, fd: FormData): Promise<ActionState> {
   return run(async () => {
     const user = await requirePermission('files:delete');
-    if (!Types.ObjectId.isValid(fileId)) fail('File not found');
+    if (!Types.ObjectId.isValid(fileId)) missing('File not found');
     const reason = z.string().trim().min(5, 'Give a reason for deleting (at least 5 characters)').parse(fd.get('reason') ?? '');
     await db();
     const file = await StoredFile.findById(fileId).lean();
-    if (!file) fail('File not found');
+    if (!file) missing('File not found');
     const links = (await linksFor([file._id])).get(String(file._id))!;
     if (isLinked(links)) fail('This file is attached to a sheet, record or amendment and is a legal source; it cannot be deleted.');
     if (file.storage === 'cloudinary' && storageDriver() !== 'cloudinary') fail('Cloudinary is not configured on this server.');

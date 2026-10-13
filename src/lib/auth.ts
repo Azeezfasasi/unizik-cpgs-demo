@@ -4,6 +4,8 @@ import { redirect } from 'next/navigation';
 import { Types } from 'mongoose';
 import { db } from './db';
 import { readSession } from './session';
+import { headers } from 'next/headers';
+import { apiKeyFromHeaders, authenticateApiKey } from './apikeys';
 import { can, canSee, DEPARTMENT_ROLES, FACULTY_ROLES, type Permission, type Role } from './rbac';
 import { User, Department } from '@/models';
 
@@ -18,6 +20,8 @@ export type CurrentUser = {
   mustChangePassword: boolean;
   /** Second factor satisfied in this session. */
   mfaPassed: boolean;
+  /** Set when the request was authenticated with an API key instead of a browser session. */
+  apiKeyId?: string;
 };
 
 export const mfaRequired = () => process.env.REQUIRE_MFA !== 'false';
@@ -34,6 +38,22 @@ export class AuthError extends Error {
  * the redirect target renders in the same request, so a memoised copy would be stale.
  */
 export async function loadCurrentUser(): Promise<CurrentUser | null> {
+  // API keys (other applications) act as their owning staff account, with its role and scope.
+  // The key name is appended to the name so the audit log shows the call came through the API.
+  const h = await headers();
+  const token = apiKeyFromHeaders(h);
+  if (token) {
+    await db();
+    const found = await authenticateApiKey(token, h.get('x-forwarded-for')?.split(',')[0]?.trim());
+    if (!found) return null;
+    const u = found.owner;
+    return {
+      id: u._id.toString(), name: `${u.name} [API: ${found.key.name}]`, email: u.email, role: u.role as Role,
+      department: u.department?.toString(), faculty: u.faculty?.toString(),
+      mfaEnabled: !!u.mfaEnabled, mustChangePassword: false, mfaPassed: true, apiKeyId: found.key._id.toString(),
+    };
+  }
+
   const s = await readSession();
   if (!s) return null;
   await db();

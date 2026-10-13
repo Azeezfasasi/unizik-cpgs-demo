@@ -39,8 +39,8 @@ const nextConfig: NextConfig = {
   },
   async headers() {
     return [
-      // Everything except locally stored scans, which the in-app viewer frames from the same origin.
-      { source: "/((?!api/files/[^/]+/raw).*)", headers: securityHeaders },
+      // Everything except locally stored scans (framed by the in-app viewer) and /api-docs (own CSP).
+      { source: "/((?!api/files/[^/]+/raw|api-docs).*)", headers: securityHeaders },
       {
         source: "/api/files/:id/raw",
         headers: [
