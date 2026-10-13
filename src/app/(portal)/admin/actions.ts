@@ -7,7 +7,7 @@ import { db } from '@/lib/db';
 import { run } from '@/lib/action';
 import { requirePermission } from '@/lib/auth';
 import { audit } from '@/lib/audit';
-import { fail } from '@/lib/errors';
+import { fail, missing } from '@/lib/errors';
 import { sendMail, link } from '@/lib/mail';
 import { esc } from '@/lib/format';
 import { ROLE_LABELS, type Role } from '@/lib/rbac';
@@ -30,12 +30,12 @@ async function resolveUnit(role: Role, department?: string, faculty?: string) {
   if (role === 'DEPT_OFFICER' || role === 'HOD') {
     if (!department) fail('Pick the department for this role');
     const d = await Department.findById(department).lean();
-    if (!d) fail('Department not found');
+    if (!d) missing('Department not found');
     return { department: d!._id, faculty: d!.faculty };
   }
   if (role === 'FACULTY_PG') {
     if (!faculty) fail('Pick the faculty for this role');
-    if (!(await Faculty.exists({ _id: faculty }))) fail('Faculty not found');
+    if (!(await Faculty.exists({ _id: faculty }))) missing('Faculty not found');
     return { faculty, department: undefined };
   }
   return { department: undefined, faculty: undefined };
@@ -76,7 +76,7 @@ export async function updateUser(userId: string, _: ActionState, fd: FormData): 
     await db();
     const data = UpdateUser.parse(Object.fromEntries(fd));
     const u = await User.findById(userId);
-    if (!u) fail('User not found');
+    if (!u) missing('User not found');
     if (u!.id === admin.id && data.role !== 'SUPER_ADMIN') fail('You cannot remove your own administrator role');
     const unit = await resolveUnit(data.role, data.department, data.faculty);
     const before = { role: u!.role, department: u!.department?.toString(), faculty: u!.faculty?.toString() };
@@ -104,7 +104,7 @@ export async function resetCredentials(userId: string, _: ActionState, fd: FormD
     await db();
     const what = String(fd.get('what'));
     const u = await User.findById(userId);
-    if (!u) fail('User not found');
+    if (!u) missing('User not found');
     if (what === 'mfa') {
       await User.updateOne({ _id: userId }, { $set: { mfaEnabled: false }, $unset: { mfaSecret: 1, mfaPendingSecret: 1 } });
       await audit(admin, 'user.mfa_reset', 'User', userId);
@@ -191,7 +191,7 @@ export async function updateFaculty(id: string, _: ActionState, fd: FormData): P
     await db();
     const d = z.object({ name: z.string().trim().min(3), code: z.string().trim().min(2).max(10) }).parse(Object.fromEntries(fd));
     const f = await Faculty.findById(id);
-    if (!f) fail('Faculty not found');
+    if (!f) missing('Faculty not found');
     const before = { name: f.name, code: f.code };
     f.set(d);
     await f.save();
@@ -205,7 +205,7 @@ export async function deleteFaculty(id: string): Promise<ActionState> {
     const admin = await requirePermission('structure:manage');
     await db();
     const f = await Faculty.findById(id).lean();
-    if (!f) fail('Faculty not found');
+    if (!f) missing('Faculty not found');
     await assertUnused('faculty', id, f.name);
     await Faculty.deleteOne({ _id: id });
     await audit(admin, 'structure.faculty_delete', 'Faculty', id, { name: f.name, code: f.code });
@@ -221,9 +221,9 @@ export async function updateDepartment(id: string, _: ActionState, fd: FormData)
       name: z.string().trim().min(3), code: z.string().trim().min(2).max(10), faculty: objectId, matricPattern: optPattern,
     }).parse(Object.fromEntries(fd));
     checkPattern(d.matricPattern);
-    if (!(await Faculty.exists({ _id: d.faculty }))) fail('Faculty not found');
+    if (!(await Faculty.exists({ _id: d.faculty }))) missing('Faculty not found');
     const dep = await Department.findById(id);
-    if (!dep) fail('Department not found');
+    if (!dep) missing('Department not found');
     const before = { name: dep.name, code: dep.code, faculty: dep.faculty.toString(), matricPattern: dep.matricPattern };
     const moved = before.faculty !== d.faculty;
     dep.set({ ...d, matricPattern: d.matricPattern ?? null });
@@ -240,7 +240,7 @@ export async function deleteDepartment(id: string): Promise<ActionState> {
     const admin = await requirePermission('structure:manage');
     await db();
     const dep = await Department.findById(id).lean();
-    if (!dep) fail('Department not found');
+    if (!dep) missing('Department not found');
     await assertUnused('department', id, dep.name);
     await Department.deleteOne({ _id: id });
     await audit(admin, 'structure.department_delete', 'Department', id, { name: dep.name, code: dep.code });
@@ -256,8 +256,8 @@ export async function updateProgramme(id: string, _: ActionState, fd: FormData):
       name: z.string().trim().min(3), code: z.string().trim().min(2).max(20), degreeType: z.enum(DEGREE_TYPES), department: objectId,
     }).parse(Object.fromEntries(fd));
     const p = await Programme.findById(id);
-    if (!p) fail('Programme not found');
-    if (!(await Department.exists({ _id: d.department }))) fail('Department not found');
+    if (!p) missing('Programme not found');
+    if (!(await Department.exists({ _id: d.department }))) missing('Department not found');
     const before = { name: p.name, code: p.code, degreeType: p.degreeType, department: p.department.toString() };
     if (before.department !== d.department) {
       const usage = await usageOf('programme', id);
@@ -275,7 +275,7 @@ export async function deleteProgramme(id: string): Promise<ActionState> {
     const admin = await requirePermission('structure:manage');
     await db();
     const p = await Programme.findById(id).lean();
-    if (!p) fail('Programme not found');
+    if (!p) missing('Programme not found');
     await assertUnused('programme', id, p.name);
     await Programme.deleteOne({ _id: id });
     await audit(admin, 'structure.programme_delete', 'Programme', id, { name: p.name, code: p.code });
@@ -289,7 +289,7 @@ export async function updateSession(id: string, _: ActionState, fd: FormData): P
     await db();
     const startYear = z.coerce.number().int().min(1960).max(2100).parse(fd.get('startYear'));
     const s = await AcademicSession.findById(id);
-    if (!s) fail('Session not found');
+    if (!s) missing('Session not found');
     const usage = await usageOf('session', id);
     if (Object.keys(usage).length) fail(`Session ${s.label} is in use (${describeUsage(usage)}), so its year cannot change.`);
     const before = { label: s.label };
@@ -305,7 +305,7 @@ export async function deleteSession(id: string): Promise<ActionState> {
     const admin = await requirePermission('structure:manage');
     await db();
     const s = await AcademicSession.findById(id).lean();
-    if (!s) fail('Session not found');
+    if (!s) missing('Session not found');
     await assertUnused('session', id, `Session ${s.label}`);
     await AcademicSession.deleteOne({ _id: id });
     await audit(admin, 'structure.session_delete', 'AcademicSession', id, { label: s.label });

@@ -5,7 +5,7 @@ import { db } from '@/lib/db';
 import { run } from '@/lib/action';
 import { requirePermission } from '@/lib/auth';
 import { audit } from '@/lib/audit';
-import { fail } from '@/lib/errors';
+import { fail, missing } from '@/lib/errors';
 import { BatchSchema, objectId } from '@/lib/validators';
 import type { ActionState } from '@/lib/action-state';
 import { DigitizationBatch, ResultSheet, User } from '@/models';
@@ -21,8 +21,9 @@ export async function createBatch(_: ActionState, fd: FormData): Promise<ActionS
     await audit(user, 'batch.create', 'DigitizationBatch', b.id, undefined, { boxCode: b.boxCode, condition: b.condition });
     id = b.id;
   });
-  if (id) redirect(`/digitization/batches/${id}`);
-  return res;
+  // Portal forms go to the new item; REST API calls (fd __api=1) get its id instead.
+  if (id && fd.get('__api') !== '1') redirect(`/digitization/batches/${id}`);
+  return id ? { ...res, data: { id } } : res;
 }
 
 export async function assignBatch(batchId: string, _: ActionState, fd: FormData): Promise<ActionState> {
@@ -39,7 +40,7 @@ export async function assignBatch(batchId: string, _: ActionState, fd: FormData)
     if (indexer && !iu) fail('Pick an active indexer');
     if (reviewer && !ru) fail('Pick an active QA reviewer');
     const b = await DigitizationBatch.findById(batchId);
-    if (!b) fail('Box not found');
+    if (!b) missing('Box not found');
     const before = { indexer: b!.indexer?.toString(), reviewer: b!.reviewer?.toString() };
     b!.set({ indexer: indexer ?? undefined, reviewer: reviewer ?? undefined });
     await b!.save();
@@ -59,7 +60,7 @@ export async function setBatchStatus(batchId: string, _: ActionState, fd: FormDa
       if (open) fail(`${open} sheet(s) in this box are not locked yet`);
     }
     const b = await DigitizationBatch.findById(batchId);
-    if (!b) fail('Box not found');
+    if (!b) missing('Box not found');
     const before = b!.status;
     b!.status = status as (typeof BATCH_STATUS)[number];
     await b!.save();

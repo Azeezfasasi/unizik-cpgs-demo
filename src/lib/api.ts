@@ -3,7 +3,7 @@ import type { Types } from 'mongoose';
 import { unstable_rethrow } from 'next/navigation';
 import { ZodError } from 'zod';
 import { AuthError, type CurrentUser } from './auth';
-import { UserError } from './errors';
+import { NotFoundError, UserError } from './errors';
 import { firstError } from './validators';
 import { can } from './rbac';
 import { canEdit, canView } from './sheet-access';
@@ -31,14 +31,14 @@ export async function uploadTarget(user: CurrentUser, purpose: string, scope: { 
   if (purpose === 'AMENDMENT_EVIDENCE') {
     if (!can(user.role, 'amendment:request')) throw new AuthError('You cannot upload amendment evidence');
     const rec = await GraduandRecord.findById(scope.recordId).populate<{ department: { _id: unknown; code: string } }>('department', 'code').lean();
-    if (!rec) throw new UserError('Record not found');
+    if (!rec) throw new NotFoundError('Record not found');
     return { departmentId: String(rec.department._id), folder: `crr/amendments/${rec.department.code}` };
   }
   if (purpose !== 'LEGACY_SCAN' && purpose !== 'SUBMISSION_SCAN') throw new UserError('Unknown upload purpose');
   const sheet = await ResultSheet.findById(scope.sheetId)
     .populate<{ department: { _id: unknown; code: string } }>('department', 'code')
     .populate<{ session: { label: string } }>('session', 'label').lean();
-  if (!sheet) throw new UserError('Sheet not found');
+  if (!sheet) throw new NotFoundError('Sheet not found');
   if ((purpose === 'LEGACY_SCAN') !== (sheet.origin === 'LEGACY')) throw new UserError('Wrong upload type for this sheet');
   const ref = { status: sheet.status, origin: sheet.origin, batch: sheet.batch, department: sheet.department._id as Types.ObjectId };
   if (!(await canEdit(user, ref))) throw new AuthError('You cannot add files to this sheet');
@@ -52,6 +52,8 @@ export async function uploadTarget(user: CurrentUser, purpose: string, scope: { 
 /** Whether the user may open a stored file. */
 export async function canOpenFile(user: CurrentUser, file: Pick<StoredFileDoc, '_id' | 'purpose' | 'uploadedBy'>) {
   if (file.uploadedBy.equals(user.id)) return true;
+  // Custodians of the file register (File storage page) may open any file.
+  if (can(user.role, 'files:read')) return true;
   if (file.purpose === 'AMENDMENT_EVIDENCE') {
     return can(user.role, 'amendment:request') || can(user.role, 'amendment:approve') || can(user.role, 'audit:read');
   }

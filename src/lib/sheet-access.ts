@@ -1,5 +1,5 @@
 import 'server-only';
-import { assertInScope, type CurrentUser } from './auth';
+import { assertInScope, scopedDepartmentIds, type CurrentUser } from './auth';
 import { fail } from './errors';
 import { isEditable } from './workflow';
 import { DigitizationBatch } from '@/models';
@@ -27,6 +27,17 @@ export async function canEdit(user: CurrentUser, sheet: SheetRef) {
   } catch {
     return false;
   }
+}
+
+/** Mongo filter for the sheets a user may list (mirrors canView). */
+export async function viewableSheetsFilter(user: CurrentUser): Promise<Record<string, unknown>> {
+  if (['SUPER_ADMIN', 'PROVOST', 'HEAD_RECORDS', 'TASKFORCE_LEAD', 'AUDITOR'].includes(user.role)) return {};
+  if (['DEPT_OFFICER', 'HOD', 'FACULTY_PG'].includes(user.role)) {
+    const ids = await scopedDepartmentIds(user);
+    return { department: { $in: ids ?? [] } };
+  }
+  const boxes = await DigitizationBatch.find({ $or: [{ indexer: user.id }, { reviewer: user.id }] }).select('_id').lean();
+  return { origin: 'LEGACY', batch: { $in: boxes.map((b) => b._id) } };
 }
 
 /** Who may view a sheet: scoped readers, plus taskforce members on the sheet's box. */

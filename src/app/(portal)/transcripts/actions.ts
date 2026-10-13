@@ -5,7 +5,7 @@ import { db } from '@/lib/db';
 import { run } from '@/lib/action';
 import { requirePermission } from '@/lib/auth';
 import { audit } from '@/lib/audit';
-import { fail } from '@/lib/errors';
+import { fail, missing } from '@/lib/errors';
 import { esc } from '@/lib/format';
 import { sendMail } from '@/lib/mail';
 import { issueVerification, verificationUrl } from '@/lib/verify';
@@ -26,7 +26,7 @@ export async function issueDocument(recordId: string, _: ActionState, fd: FormDa
     const data = Issue.parse(Object.fromEntries(fd));
     await db();
     const rec = await GraduandRecord.findById(recordId).populate<{ student: { surname: string; otherNames: string } }>('student', 'surname otherNames');
-    if (!rec) fail('Record not found');
+    if (!rec) missing('Record not found');
     if (!rec!.locked) fail('Only locked (final) records can be issued');
     if (rec!.illegible) fail('This record is flagged illegible; resolve it first');
 
@@ -58,7 +58,7 @@ export async function revokeDocument(verificationId: string, _: ActionState, fd:
     if (reason.length < 5) fail('Give a reason for revoking');
     await db();
     const v = await Verification.findById(verificationId);
-    if (!v) fail('Document not found');
+    if (!v) missing('Document not found');
     if (v!.revoked) fail('Already revoked');
     v!.set({ revoked: true, revokedAt: new Date(), revokedReason: reason });
     await v!.save();

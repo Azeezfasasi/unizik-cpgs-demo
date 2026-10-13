@@ -10,7 +10,12 @@ export async function db() {
   if (!g._mongo) {
     g._mongo = mongoose.connect(uri, { maxPoolSize: 10, serverSelectionTimeoutMS: 10_000 }).catch((err) => {
       g._mongo = undefined;
-      throw err;
+      // The driver error carries class instances (TopologyDescription) that cannot cross to the
+      // client error boundary, so log it here and throw a plain, readable error instead.
+      console.error('[db] connection failed:', err?.name, err?.message);
+      throw new Error(
+        'Could not reach the database. Check your internet connection and that this IP address is allowed in MongoDB Atlas (Network Access), then retry.',
+      );
     });
   }
   return g._mongo;

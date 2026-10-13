@@ -6,10 +6,10 @@ const csp = [
   "default-src 'self'",
   `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: https://res.cloudinary.com",
+  "img-src 'self' data: blob:",
   "font-src 'self'",
   "connect-src 'self' https://api.cloudinary.com",
-  "frame-src 'self' https://res.cloudinary.com https://api.cloudinary.com",
+  "frame-src 'self'",
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",
@@ -39,8 +39,8 @@ const nextConfig: NextConfig = {
   },
   async headers() {
     return [
-      // Everything except locally stored scans, which the in-app viewer frames from the same origin.
-      { source: "/((?!api/files/[^/]+/raw).*)", headers: securityHeaders },
+      // Everything except locally stored scans (framed by the in-app viewer) and /api-docs (own CSP).
+      { source: "/((?!api/files/[^/]+/raw|api-docs).*)", headers: securityHeaders },
       {
         source: "/api/files/:id/raw",
         headers: [

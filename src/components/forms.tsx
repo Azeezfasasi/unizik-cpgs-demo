@@ -55,6 +55,12 @@ export function FormMessage({ state, successMessage }: { state: ActionState; suc
       {msg && (
         <p className={`rounded-md px-3 py-2 text-sm ${state.ok ? 'bg-accent-soft text-accent' : 'bg-red-50 text-red-700'}`}>{msg}</p>
       )}
+      {state.data?.apiKey && (
+        <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          API key (shown once, store it securely):
+          <code className="mt-1 block rounded bg-white px-2 py-1 font-mono text-xs font-semibold break-all text-navy select-all">{state.data.apiKey}</code>
+        </div>
+      )}
       {state.data?.tempPassword && (
         <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
           Temporary password (shown once): <code className="ml-1 rounded bg-white px-2 py-0.5 font-mono font-semibold text-navy select-all">{state.data.tempPassword}</code>

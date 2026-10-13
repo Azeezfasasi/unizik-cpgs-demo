@@ -4,7 +4,7 @@ import { requirePermission } from '@/lib/auth';
 import { handle, uploadTarget } from '@/lib/api';
 import { fail } from '@/lib/errors';
 import { audit } from '@/lib/audit';
-import { MAX_UPLOAD_BYTES, saveLocal, storageDriver } from '@/lib/storage';
+import { MAX_UPLOAD_BYTES, saveLocal, STORAGE_NOT_CONFIGURED, storageDriver } from '@/lib/storage';
 import { StoredFile } from '@/models';
 import { FILE_PURPOSES } from '@/models/StoredFile';
 import { z } from 'zod';
@@ -19,7 +19,7 @@ function sniff(buf: Buffer) {
 
 /** Local-disk storage used when Cloudinary is not configured (development). */
 export const POST = handle(async (req: Request) => {
-  if (storageDriver() !== 'local') fail('Local uploads are disabled');
+  if (storageDriver() !== 'local') fail(storageDriver() === 'unconfigured' ? STORAGE_NOT_CONFIGURED : 'Local uploads are disabled');
   const user = await requirePermission('legacy:upload', 'submission:create', 'amendment:request');
   const fd = await req.formData();
   const file = fd.get('file');

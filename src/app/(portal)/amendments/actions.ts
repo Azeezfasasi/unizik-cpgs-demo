@@ -4,7 +4,7 @@ import { db } from '@/lib/db';
 import { run } from '@/lib/action';
 import { requirePermission } from '@/lib/auth';
 import { audit } from '@/lib/audit';
-import { fail } from '@/lib/errors';
+import { fail, missing } from '@/lib/errors';
 import { withTxn } from '@/lib/txn';
 import { CLASS_OF_DEGREE } from '@/lib/grading';
 import { sendMail, link } from '@/lib/mail';
@@ -43,7 +43,7 @@ export async function requestAmendment(recordId: string, _: ActionState, fd: For
     const user = await requirePermission('amendment:request');
     await db();
     const rec = await GraduandRecord.findById(recordId).lean();
-    if (!rec) fail('Record not found');
+    if (!rec) missing('Record not found');
     if (!rec!.locked) fail('Unlocked records are corrected on their sheet, not by amendment');
     if (await Amendment.exists({ record: recordId, status: 'PENDING' })) fail('This record already has a pending amendment');
 
@@ -59,7 +59,7 @@ export async function requestAmendment(recordId: string, _: ActionState, fd: For
     const evidence = String(fd.get('evidence') ?? '');
     if (!evidence) fail('Upload the evidence (e.g. Senate extract or corrected signed sheet)');
     const file = await StoredFile.findOne({ _id: evidence, purpose: 'AMENDMENT_EVIDENCE', uploadedBy: user.id }).lean();
-    if (!file) fail('Evidence file not found');
+    if (!file) missing('Evidence file not found');
 
     const a = await Amendment.create({ record: recordId, changes, reason, evidence, requestedBy: user.id });
     await audit(user, 'amendment.request', 'Amendment', a.id, undefined, { record: recordId, changes, reason });
@@ -91,7 +91,7 @@ export async function decideAmendment(amendmentId: string, _: ActionState, fd: F
       if (!approve) return;
 
       const rec = await GraduandRecord.findById(a!.record).session(session);
-      if (!rec) fail('Record not found');
+      if (!rec) missing('Record not found');
       const snapshot = Object.fromEntries(FIELDS.map((f) => [f, current(rec!.toObject(), f)]));
       rec!.history.push({ version: rec!.version, data: snapshot, amendment: a!._id, at: new Date() });
       for (const c of a!.changes) {
