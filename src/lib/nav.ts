@@ -1,6 +1,6 @@
 import 'server-only';
 import type { NavGroup } from '@/components/Sidebar';
-import { can } from './rbac';
+import { can, canSee } from './rbac';
 import { scopeFilter, type CurrentUser } from './auth';
 import { stagesFor } from './workflow';
 import { Amendment, DigitizationBatch, ResultSheet } from '@/models';
@@ -36,24 +36,24 @@ export async function buildNav(user: CurrentUser): Promise<NavGroup[]> {
       title: 'Overview',
       items: [
         { href: '/dashboard', label: 'Dashboard', icon: 'dashboard' },
-        ...(can(r, 'record:read') ? [{ href: '/records', label: 'Search records', icon: 'search' as const }] : []),
+        ...(canSee(r, 'record:read') ? [{ href: '/records', label: 'Search records', icon: 'search' as const }] : []),
       ],
     },
   ];
 
   const work: NavGroup['items'] = [];
-  if (can(r, 'digitization:view')) work.push({ href: '/digitization', label: 'Digitization', icon: 'box', count: c.toLock || undefined });
-  if (can(r, 'legacy:qa')) work.push({ href: '/digitization/qa', label: 'QA review', icon: 'check', count: c.qa });
-  if (can(r, 'submission:create')) work.push({ href: '/submissions', label: 'Submissions', icon: 'upload', count: c.returned });
-  if (can(r, 'submission:approve')) work.push({ href: '/approvals', label: 'Approvals', icon: 'inbox', count: c.approvals });
-  if (can(r, 'amendment:request') || can(r, 'amendment:approve')) work.push({ href: '/amendments', label: 'Amendments', icon: 'edit', count: c.amendments });
-  if (can(r, 'transcript:issue')) work.push({ href: '/transcripts', label: 'Issued documents', icon: 'doc' });
+  if (canSee(r, 'digitization:view')) work.push({ href: '/digitization', label: 'Digitization', icon: 'box', count: c.toLock || undefined });
+  if (canSee(r, 'legacy:qa')) work.push({ href: '/digitization/qa', label: 'QA review', icon: 'check', count: c.qa });
+  if (canSee(r, 'submission:create')) work.push({ href: '/submissions', label: 'Submissions', icon: 'upload', count: c.returned });
+  if (canSee(r, 'submission:approve')) work.push({ href: '/approvals', label: 'Approvals', icon: 'inbox', count: c.approvals });
+  if (canSee(r, 'amendment:request') || canSee(r, 'amendment:approve')) work.push({ href: '/amendments', label: 'Amendments', icon: 'edit', count: c.amendments });
+  if (canSee(r, 'transcript:issue')) work.push({ href: '/transcripts', label: 'Issued documents', icon: 'doc' });
   if (work.length) groups.push({ title: 'Work', items: work });
 
   const admin: NavGroup['items'] = [];
-  if (can(r, 'user:manage')) admin.push({ href: '/admin/users', label: 'Users', icon: 'users' });
-  if (can(r, 'structure:manage')) admin.push({ href: '/admin/structure', label: 'Academic structure', icon: 'building' });
-  if (can(r, 'audit:read')) admin.push({ href: '/audit', label: 'Audit log', icon: 'shield' });
+  if (canSee(r, 'user:manage')) admin.push({ href: '/admin/users', label: 'Users', icon: 'users' });
+  if (canSee(r, 'structure:manage')) admin.push({ href: '/admin/structure', label: 'Academic structure', icon: 'building' });
+  if (canSee(r, 'audit:read')) admin.push({ href: '/audit', label: 'Audit log', icon: 'shield' });
   if (admin.length) groups.push({ title: 'Administration', items: admin });
 
   groups.push({ title: 'You', items: [{ href: '/account', label: 'My account', icon: 'user' }] });

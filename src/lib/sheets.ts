@@ -3,6 +3,7 @@ import { Types } from 'mongoose';
 import { Department, GraduandRecord, Programme, ResultSheet, Student, User } from '@/models';
 import type { ResultSheetDoc } from '@/models/ResultSheet';
 import { classConsistency } from './grading';
+import { getGradingBands } from './settings';
 import type { GraduandRow } from './validators';
 import { FLOW, STATUS_LABELS, type FlowStage } from './workflow';
 import { sendMail, link } from './mail';
@@ -36,7 +37,8 @@ export async function checkRow(sheet: SheetLike, row: GraduandRow, degreeType?: 
     if (dup) errors.push(`${row.matricNo} already has a record for this programme (sheet ${dup.sheet?.reference})`);
   }
 
-  const c = classConsistency(row.cgpa, row.classOfDegree, degreeType);
+  const { bands } = await getGradingBands();
+  const c = classConsistency(row.cgpa, row.classOfDegree, degreeType, bands);
   if (c) warnings.push(c);
   if (row.courses.some((x) => x.score != null && x.grade && gradeMismatch(x.score, x.grade))) {
     warnings.push('One or more course grades do not match their scores');

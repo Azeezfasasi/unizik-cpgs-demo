@@ -11,6 +11,7 @@ export function LoginForm() {
   const otpStep = state.data?.step === 'otp';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   return (
     <form action={action} className="space-y-4">
@@ -21,7 +22,19 @@ export function LoginForm() {
       </div>
       <div className={otpStep ? 'hidden' : ''}>
         <label className="label" htmlFor="password">Password</label>
-        <input id="password" name="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required className="input" />
+        <div className="relative">
+          <input id="password" name="password" type={showPassword ? 'text' : 'password'} value={password}
+            onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required className="input pr-11" />
+          <button type="button" onClick={() => setShowPassword((v) => !v)}
+            aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword} aria-controls="password"
+            className="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-r-md text-muted hover:text-brand focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand">
+            <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M1.5 10S4.5 4 10 4s8.5 6 8.5 6-3 6-8.5 6-8.5-6-8.5-6Z" />
+              <circle cx="10" cy="10" r="2.5" />
+              {showPassword && <path d="M3 17 17 3" />}
+            </svg>
+          </button>
+        </div>
       </div>
       {otpStep && (
         <div>

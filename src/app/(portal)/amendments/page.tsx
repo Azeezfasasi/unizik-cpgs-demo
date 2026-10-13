@@ -7,7 +7,7 @@ import { requirePage } from '@/lib/auth';
 import { can } from '@/lib/rbac';
 import { fmtDate, fullName, titleCase } from '@/lib/format';
 import { Amendment } from '@/models';
-import { Badge, Card, EmptyState, PageHeader, PageSkeleton } from '@/components/ui';
+import { Alert, Badge, Card, EmptyState, PageHeader, PageSkeleton } from '@/components/ui';
 import { ActionForm, SubmitButton } from '@/components/forms';
 import { ScanViewer } from '@/components/ScanViewer';
 import { decideAmendment } from './actions';
@@ -70,6 +70,17 @@ async function AmendmentsPageContent() {
                       <SubmitButton name="decision" value="reject" className="btn-outline text-red-700">Reject</SubmitButton>
                     </div>
                   </ActionForm>
+                )}
+                {canDecide && a.requestedBy._id.equals(user.id) && (
+                  <div className="mt-4">
+                    <Alert tone="warning">
+                      You requested this amendment, so you cannot approve it. Another officer with the Provost role must
+                      decide it. This separation stops one person from changing a final result on their own.
+                    </Alert>
+                  </div>
+                )}
+                {!canDecide && (
+                  <p className="mt-4 text-xs text-muted">Awaiting a decision by the Provost.</p>
                 )}
               </div>
               <div>

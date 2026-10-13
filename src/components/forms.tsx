@@ -22,6 +22,10 @@ export function ActionForm({ action, children, className, resetOnSuccess = false
 
   useEffect(() => {
     if (state.ok && resetOnSuccess) ref.current?.reset();
+    // A full page load (not a client navigation) after account set-up steps, so no page
+    // cached in the browser under the old account state can be replayed.
+    const target = state.ok ? state.data?.redirect : undefined;
+    if (target?.startsWith('/') && !target.startsWith('//')) window.location.assign(target);
   }, [state, resetOnSuccess]);
 
   return (

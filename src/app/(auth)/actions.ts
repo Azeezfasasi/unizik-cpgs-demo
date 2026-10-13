@@ -7,7 +7,7 @@ import { headers } from 'next/headers';
 import { db } from '@/lib/db';
 import { User } from '@/models';
 import { createSession } from '@/lib/session';
-import { getCurrentUser, mfaRequired } from '@/lib/auth';
+import { getCurrentUser, loadCurrentUser, mfaRequired } from '@/lib/auth';
 import { loginLimiter } from '@/lib/ratelimit';
 import { audit } from '@/lib/audit';
 import { generateSecret, keyUri, verifyTotp } from '@/lib/totp';
@@ -77,27 +77,37 @@ export async function login(_: ActionState, fd: FormData): Promise<ActionState> 
   await u.save();
   await createSession({ uid: u.id, role: u.role as Role, mfa: !!u.mfaEnabled || !mfaRequired() });
   await audit({ id: u.id, name: u.name }, 'auth.login', 'User', u.id);
+  // Go straight to any pending set-up step rather than via a portal page, so the browser never
+  // caches a portal page as "redirect to set-up" (that cached hop would replay after set-up).
+  if (u.mustChangePassword) redirect('/setup/password');
+  if (mfaRequired() && !u.mfaEnabled) redirect('/mfa');
   redirect(safeNext(fd.get('next')));
 }
 
 export async function changePassword(_: ActionState, fd: FormData): Promise<ActionState> {
-  const user = await getCurrentUser();
+  const user = await loadCurrentUser();
   if (!user) redirect('/login');
   const current = String(fd.get('current') ?? '');
   const next = String(fd.get('password') ?? '');
   if (next !== String(fd.get('confirm') ?? '')) return { ok: false, message: 'The new passwords do not match' };
   const parsed = PasswordSchema.safeParse(next);
   if (!parsed.success) return { ok: false, message: parsed.error.issues[0].message };
-  if (next === current) return { ok: false, message: 'Choose a password different from the current one' };
-
   await db();
   const u = await User.findById(user.id).select('+passwordHash');
-  if (!u || !(await bcrypt.compare(current, u.passwordHash))) return { ok: false, message: 'Current password is incorrect' };
+  if (!u) redirect('/login');
+  // A forced first change follows a sign-in with the temporary password in this session,
+  // so only a voluntary change re-asks for the current password.
+  if (!user.mustChangePassword && !(await bcrypt.compare(current, u.passwordHash))) {
+    return { ok: false, message: 'Current password is incorrect' };
+  }
+  if (await bcrypt.compare(next, u.passwordHash)) {
+    return { ok: false, message: 'Choose a password different from the current one' };
+  }
   u.passwordHash = await bcrypt.hash(next, 12);
   u.mustChangePassword = false;
   await u.save();
-  await audit(user, 'auth.password_changed', 'User', user.id);
-  redirect(mfaRequired() && !user.mfaPassed ? '/mfa' : '/dashboard');
+  await audit(user, 'auth.password_changed', 'User', user.id, undefined, { forced: user.mustChangePassword });
+  return { ok: true, data: { redirect: mfaRequired() && !user.mfaPassed ? '/mfa' : '/dashboard' } };
 }
 
 export async function startMfaEnrolment(): Promise<ActionState> {
@@ -112,7 +122,7 @@ export async function startMfaEnrolment(): Promise<ActionState> {
 }
 
 export async function confirmMfa(_: ActionState, fd: FormData): Promise<ActionState> {
-  const user = await getCurrentUser();
+  const user = await loadCurrentUser();
   if (!user) redirect('/login');
   await db();
   const u = await User.findById(user.id).select('+mfaPendingSecret');
@@ -123,5 +133,5 @@ export async function confirmMfa(_: ActionState, fd: FormData): Promise<ActionSt
   await User.updateOne({ _id: u._id }, { $set: { mfaSecret: u.mfaPendingSecret, mfaEnabled: true }, $unset: { mfaPendingSecret: 1 } });
   await createSession({ uid: user.id, role: user.role, mfa: true });
   await audit(user, 'auth.mfa_enrolled', 'User', user.id);
-  redirect(user.mustChangePassword ? '/setup/password' : '/dashboard');
+  return { ok: true, data: { redirect: user.mustChangePassword ? '/setup/password' : '/dashboard' } };
 }
