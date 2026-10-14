@@ -46,5 +46,31 @@ export async function readSession(): Promise<SessionPayload | null> {
 }
 
 export async function destroySession() {
-  (await cookies()).delete(SESSION_COOKIE);
+  const jar = await cookies();
+  jar.delete(SESSION_COOKIE);
+  jar.delete(MFA_PROMPT_COOKIE);
+}
+
+/**
+ * Two-step verification reminder: set at sign-in for an account without it, cleared when the
+ * user closes the reminder or signs out. Holds the user id so it never applies to another account.
+ */
+export const MFA_PROMPT_COOKIE = 'crr_mfa_prompt';
+
+export async function setMfaPrompt(uid: string) {
+  (await cookies()).set(MFA_PROMPT_COOKIE, uid, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: '/',
+    maxAge: MAX_AGE,
+  });
+}
+
+export async function mfaPromptPending(uid: string) {
+  return (await cookies()).get(MFA_PROMPT_COOKIE)?.value === uid;
+}
+
+export async function clearMfaPrompt() {
+  (await cookies()).delete(MFA_PROMPT_COOKIE);
 }
