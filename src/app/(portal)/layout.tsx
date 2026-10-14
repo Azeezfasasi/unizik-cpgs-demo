@@ -4,6 +4,8 @@ import { buildNav } from '@/lib/nav';
 import { ROLE_LABELS } from '@/lib/rbac';
 import { Sidebar } from '@/components/Sidebar';
 import { Logo } from '@/components/Logo';
+import { MfaPrompt } from '@/components/MfaPrompt';
+import { mfaPromptPending } from '@/lib/session';
 
 // Every portal page depends on the signed-in user, so navigations may block on the server.
 export const instant = false;
@@ -20,8 +22,18 @@ export default function PortalLayout({ children }: LayoutProps<'/'>) {
           CPGS Results Repository · College of Postgraduate Studies, Nnamdi Azikiwe University, Awka · All activity is recorded.
         </footer>
       </div>
+      <Suspense fallback={null}>
+        <MfaReminder />
+      </Suspense>
     </div>
   );
+}
+
+/** The two-step verification reminder, only for an account without it and only once per sign-in. */
+async function MfaReminder() {
+  const user = await requireUser();
+  if (user.mfaEnabled || user.apiKeyId || !(await mfaPromptPending(user.id))) return null;
+  return <MfaPrompt />;
 }
 
 async function PortalSidebar() {

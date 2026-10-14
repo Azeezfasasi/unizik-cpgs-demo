@@ -1,7 +1,8 @@
 import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
-import { requireUser } from '@/lib/auth';
+import Link from 'next/link';
+import { mfaRequired, requireUser } from '@/lib/auth';
 import { MfaEnrol } from './MfaEnrol';
 
 export const metadata: Metadata = { title: 'Two-step verification' };
@@ -28,6 +29,12 @@ async function Content() {
         (Google Authenticator, Microsoft Authenticator or similar) in addition to a password.
       </p>
       <MfaEnrol />
+      {/* Optional while REQUIRE_MFA is off: the user can come back later (they are reminded at each sign-in). */}
+      {!mfaRequired() && (
+        <p className="mt-6 border-t border-line pt-4 text-center text-sm">
+          <Link href="/dashboard" className="link">Not now, go to the dashboard</Link>
+        </p>
+      )}
     </>
   );
 }

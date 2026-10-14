@@ -6,7 +6,7 @@ import { redirect } from 'next/navigation';
 import { headers } from 'next/headers';
 import { db } from '@/lib/db';
 import { User } from '@/models';
-import { createSession } from '@/lib/session';
+import { clearMfaPrompt, createSession, setMfaPrompt } from '@/lib/session';
 import { getCurrentUser, loadCurrentUser, mfaRequired } from '@/lib/auth';
 import { loginLimiter } from '@/lib/ratelimit';
 import { audit } from '@/lib/audit';
@@ -76,6 +76,8 @@ export async function login(_: ActionState, fd: FormData): Promise<ActionState> 
   u.lastLoginAt = new Date();
   await u.save();
   await createSession({ uid: u.id, role: u.role as Role, mfa: !!u.mfaEnabled || !mfaRequired() });
+  // Remind accounts without two-step verification once per sign-in (a closable modal in the portal).
+  if (!u.mfaEnabled) await setMfaPrompt(u.id);
   await audit({ id: u.id, name: u.name }, 'auth.login', 'User', u.id);
   // Go straight to any pending set-up step rather than via a portal page, so the browser never
   // caches a portal page as "redirect to set-up" (that cached hop would replay after set-up).
@@ -132,6 +134,12 @@ export async function confirmMfa(_: ActionState, fd: FormData): Promise<ActionSt
   }
   await User.updateOne({ _id: u._id }, { $set: { mfaSecret: u.mfaPendingSecret, mfaEnabled: true }, $unset: { mfaPendingSecret: 1 } });
   await createSession({ uid: user.id, role: user.role, mfa: true });
+  await clearMfaPrompt();
   await audit(user, 'auth.mfa_enrolled', 'User', user.id);
   return { ok: true, data: { redirect: user.mustChangePassword ? '/setup/password' : '/dashboard' } };
+}
+
+/** Closes the two-step verification reminder until the next sign-in. */
+export async function dismissMfaPrompt() {
+  await clearMfaPrompt();
 }
