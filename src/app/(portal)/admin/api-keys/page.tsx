@@ -48,7 +48,7 @@ async function ApiKeysContent() {
         actions={<a href="/api-docs" target="_blank" rel="noreferrer" className="btn-primary">Open API documentation</a>}
       />
 
-      <div className="grid gap-6 xl:grid-cols-[1fr_24rem]">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_24rem]">
         <Card title={`${keys.length} key${keys.length === 1 ? '' : 's'}`} bodyClass="p-0">
           {keys.length ? (
             <div className="overflow-x-auto">

@@ -164,7 +164,7 @@ async function FilesPageContent({ searchParams }: PageProps<'/admin/files'>) {
         </Card>
       )}
 
-      <form className="card mb-6 grid gap-2 p-4 sm:grid-cols-3 lg:grid-cols-7" role="search">
+      <form className="card mb-6 grid grid-cols-1 gap-2 p-4 sm:grid-cols-3 lg:grid-cols-7" role="search">
         <input name="q" defaultValue={sp.q} placeholder="File name, path or checksum" aria-label="Search files" className="input sm:col-span-3 lg:col-span-2" />
         <select name="purpose" defaultValue={sp.purpose ?? ''} aria-label="Purpose" className="input">
           <option value="">Any purpose</option>

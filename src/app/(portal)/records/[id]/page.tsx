@@ -83,10 +83,10 @@ async function RecordPageContent({ params }: PageProps<'/records/[id]'>) {
       {!r.locked && <div className="mb-6"><Alert tone="warning">This record is not final yet. Its sheet is at <b><StatusBadge status={r.sheet.status} /></b>.</Alert></div>}
       {r.illegible && <div className="mb-6"><Alert tone="warning">Flagged illegible during indexing. Confirm against the scan before relying on it.</Alert></div>}
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
         <div className="space-y-6">
           <Card title="Final result">
-            <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-3">
+            <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
               <div className="rounded-lg bg-brand-soft p-4">
                 <div className="text-xs font-semibold tracking-wide text-brand uppercase">CGPA</div>
                 <div className="mt-1 text-3xl font-semibold text-navy tabular-nums">{r.cgpa?.toFixed(2) ?? '—'}</div>
@@ -95,7 +95,7 @@ async function RecordPageContent({ params }: PageProps<'/records/[id]'>) {
                 <div className="text-xs font-semibold tracking-wide text-accent uppercase">Class</div>
                 <div className="mt-1 text-xl font-semibold text-navy">{r.classOfDegree ? CLASS_LABELS[r.classOfDegree as ClassOfDegree] : '—'}</div>
               </div>
-              <div className="rounded-lg bg-slate-100 p-4">
+              <div className="col-span-2 rounded-lg bg-slate-100 p-4 sm:col-span-1">
                 <div className="text-xs font-semibold tracking-wide text-muted uppercase">Senate approval</div>
                 <div className="mt-1 text-lg font-semibold text-navy">{fmtDate(r.senateApprovalDate)}</div>
               </div>
@@ -146,7 +146,7 @@ async function RecordPageContent({ params }: PageProps<'/records/[id]'>) {
 
           {canIssue && r.locked && (
             <Card title="Issue a statement of result or transcript">
-              <ActionForm action={issueDocument.bind(null, id)} className="grid gap-3 sm:grid-cols-2">
+              <ActionForm action={issueDocument.bind(null, id)} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                   <label className="label" htmlFor="kind">Document</label>
                   <select id="kind" name="kind" className="input">
@@ -181,7 +181,24 @@ async function RecordPageContent({ params }: PageProps<'/records/[id]'>) {
 
           {(verifications.length > 0) && (
             <Card title="Issued documents" bodyClass="p-0">
-              <div className="overflow-x-auto">
+              {/* Phones: one card per document. */}
+              <ul className="divide-y divide-line md:hidden">
+                {verifications.map((v) => {
+                  const expired = v.expiresAt < new Date();
+                  return (
+                    <li key={v._id.toString()} className="space-y-1.5 px-4 py-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="font-mono text-sm font-semibold whitespace-nowrap text-navy">{v.code}</span>
+                        {v.revoked ? <Badge tone="danger">Revoked</Badge> : expired ? <Badge>Expired</Badge> : <Badge tone="success">Valid</Badge>}
+                      </div>
+                      <div className="text-sm">{v.kind === 'TRANSCRIPT' ? 'Transcript' : 'Statement of result'} · <span className="text-muted">to</span> {v.issuedTo}</div>
+                      <div className="text-xs text-muted">Issued {fmtDate(v.createdAt)}</div>
+                      {canIssue && <DocumentActions id={v._id.toString()} revoked={v.revoked} expired={expired} align="start" />}
+                    </li>
+                  );
+                })}
+              </ul>
+              <div className="hidden overflow-x-auto md:block">
                 <table className="table">
                   <thead><tr><th>Code</th><th>Type</th><th>Issued to</th><th>Issued</th><th>Status</th><th /></tr></thead>
                   <tbody>
@@ -189,7 +206,7 @@ async function RecordPageContent({ params }: PageProps<'/records/[id]'>) {
                       const expired = v.expiresAt < new Date();
                       return (
                         <tr key={v._id.toString()}>
-                          <td className="font-mono text-xs">{v.code}</td>
+                          <td className="font-mono text-xs whitespace-nowrap">{v.code}</td>
                           <td>{v.kind === 'TRANSCRIPT' ? 'Transcript' : 'Statement'}</td>
                           <td>{v.issuedTo}</td>
                           <td className="text-xs">{fmtDate(v.createdAt)}</td>

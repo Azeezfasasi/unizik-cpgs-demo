@@ -54,7 +54,7 @@ async function AuditPageContent({ searchParams }: PageProps<'/audit'>) {
         }
       />
 
-      <form className="card mb-6 grid gap-2 p-4 sm:grid-cols-3 lg:grid-cols-6">
+      <form className="card mb-6 grid grid-cols-1 gap-2 p-4 sm:grid-cols-3 lg:grid-cols-6">
         <select name="action" defaultValue={sp.action ?? ''} className="input" aria-label="Action">
           <option value="">All actions</option>
           {[...new Set(actions.map((a: string) => a.split('.')[0]))].sort().map((p) => <option key={p} value={`${p}.`}>{p}.*</option>)}

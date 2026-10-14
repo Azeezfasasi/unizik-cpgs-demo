@@ -50,7 +50,7 @@ async function AmendmentsPageContent() {
       <div className="space-y-6">
         <Card title={`Pending (${pending.length})`} bodyClass={pending.length ? 'divide-y divide-line' : ''}>
           {pending.length ? pending.map((a) => (
-            <div key={a._id.toString()} className="grid gap-5 p-5 lg:grid-cols-[1fr_1fr]">
+            <div key={a._id.toString()} className="grid grid-cols-1 gap-5 p-5 lg:grid-cols-[1fr_1fr]">
               <div>
                 <Link href={`/records/${a.record._id}`} className="link">{fullName(a.record.student)}</Link>
                 <div className="text-xs text-muted"><span className="font-mono">{a.record.student.matricNo}</span> · {a.record.degree}</div>

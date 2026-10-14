@@ -3,7 +3,7 @@ import { Logo } from '@/components/Logo';
 
 export default function AuthLayout({ children }: LayoutProps<'/'>) {
   return (
-    <div className="grid min-h-screen lg:grid-cols-[1fr_1.1fr]">
+    <div className="grid grid-cols-1 min-h-screen lg:grid-cols-[1fr_1.1fr]">
       <aside className="relative hidden overflow-hidden bg-navy p-10 text-white lg:flex lg:flex-col">
         <div className="absolute inset-0 opacity-25" style={{ backgroundImage: 'radial-gradient(circle at 20% 80%, #009689 0, transparent 50%), radial-gradient(circle at 90% 10%, #007a55 0, transparent 40%)' }} />
         <Link href="/" className="relative"><Logo light /></Link>

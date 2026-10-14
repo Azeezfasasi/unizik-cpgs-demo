@@ -66,12 +66,12 @@ async function BatchPageContent({ params }: PageProps<'/digitization/batches/[id
         actions={<Badge tone={b.status === 'COMPLETED' ? 'success' : 'brand'}>{titleCase(b.status)}</Badge>}
       />
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_20rem]">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_20rem]">
         <div className="space-y-6">
           {canIndex && b.status !== 'COMPLETED' && (
             <Card title="Start a result sheet from this box">
               {programmes.length ? (
-                <ActionForm action={createLegacySheet} className="grid gap-3 sm:grid-cols-[1fr_10rem_auto] sm:items-end">
+                <ActionForm action={createLegacySheet} className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_10rem_auto] sm:items-end">
                   <input type="hidden" name="batch" value={id} />
                   <div>
                     <label className="label" htmlFor="programme">Programme</label>

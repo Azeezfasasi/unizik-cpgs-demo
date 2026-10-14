@@ -5,10 +5,14 @@ import { revokeDocument, sendDocument } from './actions';
  * View / Download / Email / Revoke for one issued document. Only valid documents can be
  * emailed; revoked ones show nothing (they no longer render).
  */
-export function DocumentActions({ id, revoked, expired }: { id: string; revoked: boolean; expired: boolean }) {
+export function DocumentActions({ id, revoked, expired, align = 'end' }: {
+  id: string; revoked: boolean; expired: boolean;
+  /** 'end' in a table's last column, 'start' in a stacked (phone) layout. */
+  align?: 'start' | 'end';
+}) {
   if (revoked) return null;
   return (
-    <div className="flex flex-col items-end gap-1">
+    <div className={`flex flex-col gap-1 ${align === 'end' ? 'items-end' : 'items-start'}`}>
       <div className="flex gap-3 text-xs">
         <a className="link" href={`/api/documents/${id}`} target="_blank" rel="noreferrer">View</a>
         <a className="link" href={`/api/documents/${id}?download=1`}>Download</a>
