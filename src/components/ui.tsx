@@ -70,7 +70,8 @@ export function Card({ title, actions, children, className = '', bodyClass = 'p-
   title?: ReactNode; actions?: ReactNode; children: ReactNode; className?: string; bodyClass?: string;
 }) {
   return (
-    <section className={`card ${className}`}>
+    // min-w-0: inside a grid, let the card shrink so wide tables scroll within it instead of widening the page.
+    <section className={`card min-w-0 ${className}`}>
       {(title || actions) && (
         <header className="flex items-center justify-between gap-3 border-b border-line px-5 py-3">
           <h2 className="text-sm font-semibold text-navy">{title}</h2>
