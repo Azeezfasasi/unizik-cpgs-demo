@@ -8,6 +8,7 @@ import { fmtDate, fullName } from '@/lib/format';
 import { normaliseCode } from '@/lib/verify';
 import { Verification } from '@/models';
 import { Badge, Card, EmptyState, PageHeader, StatCard, PageSkeleton } from '@/components/ui';
+import { DocumentActions } from './DocumentActions';
 
 export const metadata: Metadata = { title: 'Issued documents' };
 
@@ -60,7 +61,7 @@ async function TranscriptsPageContent({ searchParams }: PageProps<'/transcripts'
         {rows.length ? (
           <div className="overflow-x-auto">
             <table className="table">
-              <thead><tr><th>Code</th><th>Graduand</th><th>Type</th><th>Issued to</th><th>Issued</th><th className="text-right">Lookups</th><th>Status</th></tr></thead>
+              <thead><tr><th>Code</th><th>Graduand</th><th>Type</th><th>Issued to</th><th>Issued</th><th className="text-right">Lookups</th><th>Status</th><th /></tr></thead>
               <tbody>
                 {rows.map((v) => (
                   <tr key={v._id.toString()}>
@@ -77,6 +78,7 @@ async function TranscriptsPageContent({ searchParams }: PageProps<'/transcripts'
                       {v.revoked ? <span title={v.revokedReason}><Badge tone="danger">Revoked</Badge></span>
                         : v.expiresAt < now ? <Badge>Expired</Badge> : <Badge tone="success">Valid to {fmtDate(v.expiresAt)}</Badge>}
                     </td>
+                    <td className="text-right"><DocumentActions id={v._id.toString()} revoked={v.revoked} expired={v.expiresAt < now} /></td>
                   </tr>
                 ))}
               </tbody>

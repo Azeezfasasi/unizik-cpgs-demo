@@ -13,7 +13,8 @@ import { Amendment, GraduandRecord, ResultSheet, StoredFile, Verification } from
 import { Alert, Badge, Card, DetailList, PageHeader, StatusBadge, PageSkeleton } from '@/components/ui';
 import { ScanViewer } from '@/components/ScanViewer';
 import { ActionForm, SubmitButton } from '@/components/forms';
-import { issueDocument, revokeDocument } from '../../transcripts/actions';
+import { issueDocument } from '../../transcripts/actions';
+import { DocumentActions } from '../../transcripts/DocumentActions';
 import { AmendmentForm } from './AmendmentForm';
 
 export const metadata: Metadata = { title: 'Graduand record' };
@@ -164,8 +165,14 @@ async function RecordPageContent({ params }: PageProps<'/records/[id]'>) {
                   <input id="issuedTo" name="issuedTo" required placeholder="The graduand, or e.g. Federal Ministry of Health" className="input" />
                 </div>
                 <div>
-                  <label className="label" htmlFor="email">Email the document to <span className="font-normal text-muted">(optional)</span></label>
-                  <input id="email" name="email" type="email" className="input" />
+                  <label className="label" htmlFor="email">Graduand&rsquo;s email <span className="font-normal text-muted">(optional)</span></label>
+                  <input id="email" name="email" type="email" autoComplete="off" className="input" />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="label" htmlFor="recipients">Also send to <span className="font-normal text-muted">(optional: employers, institutions, embassies…)</span></label>
+                  <textarea id="recipients" name="recipients" rows={2} className="input"
+                    placeholder="hr@employer.com, admissions@university.edu" />
+                  <p className="mt-1 text-xs text-muted">Separate addresses with commas or new lines (up to 10). Each recipient gets their own email with the PDF attached, a download link and the verification code.</p>
                 </div>
                 <div className="sm:col-span-2"><SubmitButton className="btn-accent">Generate document</SubmitButton></div>
               </ActionForm>
@@ -188,18 +195,7 @@ async function RecordPageContent({ params }: PageProps<'/records/[id]'>) {
                           <td className="text-xs">{fmtDate(v.createdAt)}</td>
                           <td>{v.revoked ? <Badge tone="danger">Revoked</Badge> : expired ? <Badge>Expired</Badge> : <Badge tone="success">Valid</Badge>}</td>
                           <td className="text-right">
-                            {canIssue && !v.revoked && (
-                              <div className="flex flex-col items-end gap-1">
-                                <a className="text-xs link" href={`/api/documents/${v._id}`} target="_blank" rel="noreferrer">Download PDF</a>
-                                <details className="text-left">
-                                  <summary className="cursor-pointer text-xs text-red-700">Revoke</summary>
-                                  <ActionForm action={revokeDocument.bind(null, v._id.toString())} className="mt-1 w-56 space-y-1">
-                                    <input name="reason" placeholder="Reason" className="input py-1 text-xs" />
-                                    <SubmitButton className="btn-danger px-2 py-1 text-xs">Confirm revoke</SubmitButton>
-                                  </ActionForm>
-                                </details>
-                              </div>
-                            )}
+                            {canIssue && <DocumentActions id={v._id.toString()} revoked={v.revoked} expired={expired} />}
                           </td>
                         </tr>
                       );

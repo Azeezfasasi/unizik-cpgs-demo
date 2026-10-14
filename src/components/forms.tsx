@@ -55,6 +55,14 @@ export function FormMessage({ state, successMessage }: { state: ActionState; suc
       {msg && (
         <p className={`rounded-md px-3 py-2 text-sm ${state.ok ? 'bg-accent-soft text-accent' : 'bg-red-50 text-red-700'}`}>{msg}</p>
       )}
+      {state.ok && state.data?.download?.startsWith('/') && (
+        <div className="flex flex-wrap gap-2">
+          <a href={state.data.download} className="btn-primary py-1.5 text-sm">Download PDF</a>
+          {state.data.view?.startsWith('/') && (
+            <a href={state.data.view} target="_blank" rel="noreferrer" className="btn-outline py-1.5 text-sm">View</a>
+          )}
+        </div>
+      )}
       {state.data?.apiKey && (
         <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
           API key (shown once, store it securely):
