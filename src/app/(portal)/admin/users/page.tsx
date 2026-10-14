@@ -112,6 +112,46 @@ async function UsersPageContent({ searchParams }: PageProps<'/admin/users'>) {
     </>
   );
 
+  type U = (typeof users)[number];
+  const securityBadges = (u: U, locked: boolean) => (
+    <div className="flex flex-wrap gap-1">
+      {!u.isActive && <Badge tone="danger">Inactive</Badge>}
+      {locked && <Badge tone="danger">Locked out</Badge>}
+      {u.mfaEnabled ? <Badge tone="success">MFA</Badge> : <Badge tone="warning">No MFA</Badge>}
+      {u.mustChangePassword && <Badge tone="warning">Temp password</Badge>}
+    </div>
+  );
+  const managePanel = (u: U, id: string) => (
+    <details className="text-left">
+      <summary className="cursor-pointer text-xs link">Manage</summary>
+      <div className="mt-2 w-full space-y-3 rounded-md border border-line bg-white p-3 shadow-sm md:w-72">
+        <ActionForm action={updateUser.bind(null, id)} className="space-y-2">
+          <select name="role" defaultValue={u.role} className="input">
+            {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
+          </select>
+          {unitSelects(u.department?._id.toString(), u.faculty?._id.toString())}
+          <SubmitButton className="btn-primary w-full py-1.5">Save role</SubmitButton>
+        </ActionForm>
+        <div className="grid grid-cols-2 gap-2 border-t border-line pt-3">
+          <ActionForm action={resetCredentials.bind(null, id)} confirm="Generate a new temporary password?">
+            <input type="hidden" name="what" value="password" />
+            <SubmitButton className="btn-outline w-full px-2 py-1 text-xs">Reset password</SubmitButton>
+          </ActionForm>
+          <ActionForm action={resetCredentials.bind(null, id)} confirm="Remove this user's authenticator?">
+            <input type="hidden" name="what" value="mfa" />
+            <SubmitButton className="btn-outline w-full px-2 py-1 text-xs">Reset MFA</SubmitButton>
+          </ActionForm>
+        </div>
+        {id !== user.id && (
+          <ActionForm action={setUserActive.bind(null, id)} confirm={u.isActive ? 'Deactivate this account? The user is signed out immediately.' : 'Reactivate this account?'}>
+            <input type="hidden" name="active" value={u.isActive ? 'false' : 'true'} />
+            <SubmitButton className={`${u.isActive ? 'btn-danger' : 'btn-accent'} w-full py-1.5 text-xs`}>{u.isActive ? 'Deactivate' : 'Reactivate'}</SubmitButton>
+          </ActionForm>
+        )}
+      </div>
+    </details>
+  );
+
   return (
     <>
       <PageHeader title="Staff accounts" description="Department-level roles only ever see their own department or faculty. New accounts must change the temporary password and enrol an authenticator." />
@@ -164,13 +204,36 @@ async function UsersPageContent({ searchParams }: PageProps<'/admin/users'>) {
       <div className="grid gap-6 xl:grid-cols-[1fr_22rem]">
         <Card title={filtered ? `${total} of ${allCount} accounts match` : `${total} accounts`} bodyClass="p-0">
           {users.length === 0 ? <EmptyState title="No accounts match">Try a shorter search or clear some filters.</EmptyState> : (
-          <div className="overflow-x-auto">
+          <>
+          {/* Phones: one card per account; the table needs more width than a phone has. */}
+          <ul className="divide-y divide-line md:hidden">
+            {users.map((u) => {
+              const id = u._id.toString();
+              const locked = !!(u.lockedUntil && u.lockedUntil > now);
+              return (
+                <li key={id} className={`space-y-2 px-4 py-3 ${u.isActive ? '' : 'opacity-60'}`}>
+                  <div className="min-w-0">
+                    <div className="font-medium text-navy">{u.name}</div>
+                    <div className="truncate text-xs text-muted">{u.email}</div>
+                  </div>
+                  <div className="text-sm">
+                    {ROLE_LABELS[u.role]}
+                    <span className="text-xs text-muted"> · {u.department?.name ?? u.faculty?.name ?? 'University-wide'}</span>
+                  </div>
+                  {securityBadges(u, locked)}
+                  <div className="text-xs text-muted">Last sign-in: {fmtDateTime(u.lastLoginAt)}</div>
+                  {managePanel(u, id)}
+                </li>
+              );
+            })}
+          </ul>
+          <div className="hidden overflow-x-auto md:block">
             <table className="table">
               <thead><tr><th>Name</th><th>Role and unit</th><th>Security</th><th>Last sign-in</th><th /></tr></thead>
               <tbody>
                 {users.map((u) => {
                   const id = u._id.toString();
-                  const locked = u.lockedUntil && u.lockedUntil > now;
+                  const locked = !!(u.lockedUntil && u.lockedUntil > now);
                   return (
                     <tr key={id} className={u.isActive ? '' : 'opacity-60'}>
                       <td><div className="font-medium text-navy">{u.name}</div><div className="text-xs text-muted">{u.email}</div></td>
@@ -178,51 +241,16 @@ async function UsersPageContent({ searchParams }: PageProps<'/admin/users'>) {
                         <div>{ROLE_LABELS[u.role]}</div>
                         <div className="text-xs text-muted">{u.department?.name ?? u.faculty?.name ?? 'University-wide'}</div>
                       </td>
-                      <td>
-                        <div className="flex flex-wrap gap-1">
-                          {!u.isActive && <Badge tone="danger">Inactive</Badge>}
-                          {locked && <Badge tone="danger">Locked out</Badge>}
-                          {u.mfaEnabled ? <Badge tone="success">MFA</Badge> : <Badge tone="warning">No MFA</Badge>}
-                          {u.mustChangePassword && <Badge tone="warning">Temp password</Badge>}
-                        </div>
-                      </td>
+                      <td>{securityBadges(u, locked)}</td>
                       <td className="text-xs whitespace-nowrap">{fmtDateTime(u.lastLoginAt)}</td>
-                      <td className="text-right">
-                        <details className="text-left">
-                          <summary className="cursor-pointer text-xs link">Manage</summary>
-                          <div className="mt-2 w-72 space-y-3 rounded-md border border-line bg-white p-3 shadow-sm">
-                            <ActionForm action={updateUser.bind(null, id)} className="space-y-2">
-                              <select name="role" defaultValue={u.role} className="input">
-                                {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
-                              </select>
-                              {unitSelects(u.department?._id.toString(), u.faculty?._id.toString())}
-                              <SubmitButton className="btn-primary w-full py-1.5">Save role</SubmitButton>
-                            </ActionForm>
-                            <div className="grid grid-cols-2 gap-2 border-t border-line pt-3">
-                              <ActionForm action={resetCredentials.bind(null, id)} confirm="Generate a new temporary password?">
-                                <input type="hidden" name="what" value="password" />
-                                <SubmitButton className="btn-outline w-full px-2 py-1 text-xs">Reset password</SubmitButton>
-                              </ActionForm>
-                              <ActionForm action={resetCredentials.bind(null, id)} confirm="Remove this user's authenticator?">
-                                <input type="hidden" name="what" value="mfa" />
-                                <SubmitButton className="btn-outline w-full px-2 py-1 text-xs">Reset MFA</SubmitButton>
-                              </ActionForm>
-                            </div>
-                            {id !== user.id && (
-                              <ActionForm action={setUserActive.bind(null, id)} confirm={u.isActive ? 'Deactivate this account? The user is signed out immediately.' : 'Reactivate this account?'}>
-                                <input type="hidden" name="active" value={u.isActive ? 'false' : 'true'} />
-                                <SubmitButton className={`${u.isActive ? 'btn-danger' : 'btn-accent'} w-full py-1.5 text-xs`}>{u.isActive ? 'Deactivate' : 'Reactivate'}</SubmitButton>
-                              </ActionForm>
-                            )}
-                          </div>
-                        </details>
-                      </td>
+                      <td className="text-right">{managePanel(u, id)}</td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
           </div>
+          </>
           )}
           <Pagination page={page} pages={Math.ceil(total / PAGE)} href={(p) => `/admin/users${qs({ page: p })}`} />
         </Card>
