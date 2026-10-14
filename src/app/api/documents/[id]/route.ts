@@ -6,7 +6,7 @@ import { buildDocumentPdf, documentLinkValid } from '@/lib/documents';
 
 /**
  * Downloads an issued statement or transcript. Records staff download when signed in;
- * recipients use the time-limited signed link sent by email.
+ * recipients use the time-limited signed link sent by email. Add ?download=1 to save instead of open.
  */
 export async function GET(req: Request, ctx: RouteContext<'/api/documents/[id]'>) {
   const { id } = await ctx.params;
@@ -26,7 +26,8 @@ export async function GET(req: Request, ctx: RouteContext<'/api/documents/[id]'>
   return new Response(new Uint8Array(doc.bytes), {
     headers: {
       'content-type': 'application/pdf',
-      'content-disposition': `inline; filename="${doc.filename}"`,
+      // ?download=1 saves the file; otherwise it opens in the browser.
+      'content-disposition': `${url.searchParams.get('download') === '1' ? 'attachment' : 'inline'}; filename="${doc.filename}"`,
       'cache-control': 'private, no-store',
     },
   });

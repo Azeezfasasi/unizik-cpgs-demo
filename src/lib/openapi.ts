@@ -228,8 +228,10 @@ const schemas: Json = {
   }),
   DocumentIssue: obj({
     kind: str(undefined, { enum: ['STATEMENT_OF_RESULT', 'TRANSCRIPT'] }), issuedTo: str('Who the document is for', { minLength: 3 }),
-    validDays: int(undefined, { enum: [90, 365, 1825] }), email: str('Optional: email a 7-day download link to this address', { format: 'email' }),
+    validDays: int(undefined, { enum: [90, 365, 1825] }), email: str("Optional: the graduand's email", { format: 'email' }),
+    recipients: { ...arr(str(undefined, { format: 'email' })), maxItems: 10, description: 'Optional: other addresses (employers, institutions). Each gets its own email with the PDF attached, a download link and the verification code' },
   }, ['kind', 'issuedTo', 'validDays']),
+  EmailResult: obj({ ok: bool(), message: str(undefined, { example: 'Emailed to hr@employer.com, admissions@university.edu.' }), data: { type: 'null' }, warnings: arr(str('Addresses that could not be sent to, with the reason')) }),
   Amendment: obj({
     id: id(), record: id(), status: str(undefined, { enum: ['PENDING', 'APPROVED', 'REJECTED'] }), reason: str(),
     changes: arr(obj({ field: str(), from: {}, to: {} })), evidence: id('Evidence file id'),
@@ -353,7 +355,7 @@ const paths: Json = {
     get: op('Documents', 'Documents issued for a record', 'Head of Records, Provost, Auditor, System Administrator', { responses: { 200: ok('Documents', dataOf(arr(ref('Document'))), { data: [exDocument] }), ...STD } }),
     post: op('Documents', 'Issue a statement of result or transcript', 'Head of Records, System Administrator', {
       description: 'Only for locked (final) records that are not flagged illegible. Returns the verification code; the PDF is at pdfUrl.',
-      requestBody: jsonBody(ref('DocumentIssue'), { kind: 'STATEMENT_OF_RESULT', issuedTo: 'Federal Ministry of Health', validDays: 365, email: 'hr@health.gov.ng' }),
+      requestBody: jsonBody(ref('DocumentIssue'), { kind: 'STATEMENT_OF_RESULT', issuedTo: 'Federal Ministry of Health', validDays: 365, email: 'graduand@example.com', recipients: ['hr@health.gov.ng'] }),
       responses: { 201: actionOk(ref('Document'), { message: 'Issued with verification code JK92-CWEU.', data: exDocument }), ...errs(401, 403, 404, 422, 429) },
     }),
   },
@@ -436,7 +438,8 @@ const paths: Json = {
 
   // Documents
   '/documents': { get: op('Documents', 'Register of issued documents', 'Head of Records, Provost, Auditor, System Administrator', { parameters: [query('code', 'Verification code'), query('status', 'Status', str(undefined, { enum: ['valid', 'revoked', 'expired'] })), ...PAGE], responses: { 200: ok('Documents', listOf(ref('Document')), { data: [exDocument], meta: { page: 1, limit: 25, total: 1, pages: 1 } }), ...STD } }) },
-  '/documents/{id}/pdf': { get: op('Documents', 'Download the issued PDF', 'Head of Records, System Administrator', { parameters: [pathId('id', 'Document id')], responses: { 200: { description: 'PDF with QR code', content: { 'application/pdf': { schema: str(undefined, { format: 'binary' }) } } }, 410: { description: 'Revoked, or superseded by an amendment' }, ...errs(401, 403, 404, 429) } }) },
+  '/documents/{id}/pdf': { get: op('Documents', 'Download the issued PDF', 'Head of Records, System Administrator', { parameters: [pathId('id', 'Document id'), query('download', 'Set to 1 to receive it as an attachment (Content-Disposition: attachment) instead of inline', str(undefined, { enum: ['1'] }))], responses: { 200: { description: 'PDF with QR code', content: { 'application/pdf': { schema: str(undefined, { format: 'binary' }) } } }, 410: { description: 'Revoked, or superseded by an amendment' }, ...errs(401, 403, 404, 429) } }) },
+  '/documents/{id}/email': { post: op('Documents', 'Email an issued document', 'Head of Records, System Administrator', { description: 'Sends the PDF to each address separately (recipients never see each other), with a download link valid up to 7 days (never past the document expiry) and the verification code. Refused for revoked or expired documents. Every send is audited.', parameters: [pathId('id', 'Document id')], requestBody: jsonBody(obj({ recipients: { ...arr(str(undefined, { format: 'email' })), minItems: 1, maxItems: 10 } }, ['recipients']), { recipients: ['hr@employer.com', 'admissions@university.edu'] }), responses: { 200: ok('Sent to at least one address', ref('EmailResult'), { ok: true, message: 'Emailed to hr@employer.com, admissions@university.edu.', data: null, warnings: [] }), 502: { description: 'No address could be sent to (e.g. email not configured)', content: { 'application/json': { schema: ref('Error'), example: { error: { message: 'Not sent to hr@employer.com: Email is not configured on this server.', status: 502 } } } } }, ...errs(401, 403, 404, 422, 429) } }) },
   '/documents/{id}/revoke': { post: op('Documents', 'Revoke a document', 'Head of Records, System Administrator', { description: 'Takes effect immediately on the verification page.', parameters: [pathId('id', 'Document id')], requestBody: jsonBody(obj({ reason: str(undefined, { minLength: 5 }) }, ['reason']), { reason: 'Issued to the wrong recipient' }), responses: { 200: actionOk(undefined, { message: 'Code JK92-CWEU revoked. The verification page now shows it as revoked.' }), ...errs(401, 403, 404, 422, 429) } }) },
 
   // Amendments

@@ -17,14 +17,19 @@ export const GET = v1(async (_req: Request, ctx: RouteCtx) => {
   return json({ data: docs.map((d) => docOut(d as never)) });
 });
 
-/** Issue a statement of result or transcript. Body: { kind, issuedTo, validDays, email? }. */
+/**
+ * Issue a statement of result or transcript. Body: { kind, issuedTo, validDays, email?, recipients? }.
+ * recipients: array of addresses (or one comma-separated string); each gets the PDF by email.
+ */
 export const POST = v1(async (req: Request, ctx: RouteCtx) => {
   await requirePermission('transcript:issue');
   const id = await param(ctx);
   assertId(id, 'Record');
   await db();
   if (!(await GraduandRecord.exists({ _id: id }))) return apiError(404, 'Record not found');
-  const res = await issueDocument(id, {}, toForm(await readJson(req)));
+  const body = await readJson(req);
+  if (Array.isArray(body.recipients)) body.recipients = body.recipients.join(',');
+  const res = await issueDocument(id, {}, toForm(body));
   if (!res.ok) return fromAction(res);
   const v = await Verification.findById(res.data?.id).populate('issuedBy', 'name').lean();
   return json({ ok: true, message: res.message, data: v ? docOut(v as never) : null }, 201);
