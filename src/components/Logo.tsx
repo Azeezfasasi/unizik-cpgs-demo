@@ -13,8 +13,8 @@ export function LogoMark({ className = 'h-9 w-9' }: { className?: string }) {
 export function Logo({ light = false }: { light?: boolean }) {
   return (
     <div className="flex items-center gap-3">
-      <LogoMark />
-      <div className="leading-tight">
+      <LogoMark className="h-9 w-9 shrink-0" />
+      <div className="leading-tight whitespace-nowrap">
         <div className={`text-sm font-bold tracking-wide ${light ? 'text-white' : 'text-navy'}`}>UNIZIK CPGS</div>
         <div className={`text-xs ${light ? 'text-slate-300' : 'text-muted'}`}>Results Repository</div>
       </div>
