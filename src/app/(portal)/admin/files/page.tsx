@@ -111,7 +111,7 @@ async function FilesPageContent({ searchParams }: PageProps<'/admin/files'>) {
         </Alert></div>
       )}
 
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <StatCard label="Files" value={t.n.toLocaleString()} tone="navy" hint={`${fmtBytes(t.bytes)} recorded`} />
         <StatCard label="Unlinked" value={unlinked} tone={unlinked ? 'danger' : 'accent'} href="/admin/files?linked=no" hint="Not attached to anything" />
         <StatCard label="Awaiting backup" value={t.notBacked} tone="brand" href="/admin/files?backup=no" hint="Not yet copied to the second store" />

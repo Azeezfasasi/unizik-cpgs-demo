@@ -51,19 +51,21 @@ export function ClassBadge({ cls }: { cls?: string | null }) {
   return <Badge tone={tone}>{CLASS_LABELS[cls as ClassOfDegree] ?? cls}</Badge>;
 }
 
-export function StatCard({ label, value, hint, tone = 'brand', href }: {
+export function StatCard({ label, value, hint, tone = 'brand', href, className = '' }: {
   label: string; value: ReactNode; hint?: ReactNode; tone?: 'brand' | 'accent' | 'navy' | 'danger'; href?: string;
+  /** Extra classes for the grid item, e.g. a column span. */
+  className?: string;
 }) {
   const bar = { brand: 'bg-brand', accent: 'bg-accent', navy: 'bg-navy', danger: 'bg-red-600' }[tone];
   const body = (
-    <div className="card relative overflow-hidden p-5 transition-shadow hover:shadow-md">
+    <div className={`card relative h-full overflow-hidden p-4 transition-shadow hover:shadow-md sm:p-5 ${href ? '' : className}`}>
       <span className={`absolute inset-y-0 left-0 w-1 ${bar}`} />
       <div className="text-xs font-semibold tracking-wide text-muted uppercase">{label}</div>
-      <div className="mt-2 text-3xl font-semibold text-navy tabular-nums">{value}</div>
+      <div className="mt-1.5 text-2xl font-semibold text-navy tabular-nums sm:mt-2 sm:text-3xl">{value}</div>
       {hint && <div className="mt-1 text-xs text-muted">{hint}</div>}
     </div>
   );
-  return href ? <Link href={href}>{body}</Link> : body;
+  return href ? <Link href={href} className={className}>{body}</Link> : body;
 }
 
 export function Card({ title, actions, children, className = '', bodyClass = 'p-5' }: {

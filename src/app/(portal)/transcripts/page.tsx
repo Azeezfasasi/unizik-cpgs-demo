@@ -50,10 +50,10 @@ async function TranscriptsPageContent({ searchParams }: PageProps<'/transcripts'
         description="Statements of result and transcripts carry a verification code and QR. Issue new documents from a graduand's record page."
         actions={<Link href="/records?locked=1" className="btn-primary">Find a record to issue</Link>}
       />
-      <div className="mb-6 grid gap-4 sm:grid-cols-3">
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
         <StatCard label="Documents issued" value={total} tone="brand" />
         <StatCard label="Revoked" value={revoked} tone="danger" />
-        <StatCard label="Public verifications" value={lookups[0]?.n ?? 0} tone="accent" hint="Lookups on the verify page" />
+        <StatCard label="Public verifications" value={lookups[0]?.n ?? 0} tone="accent" hint="Lookups on the verify page" className="col-span-2 sm:col-span-1" />
       </div>
       <Card title="Register" actions={
         <form className="flex gap-2"><input name="code" defaultValue={typeof code === 'string' ? code : ''} placeholder="Find code" className="input w-36 py-1 font-mono text-xs uppercase" /><button className="btn-outline py-1 text-xs">Find</button></form>
@@ -65,7 +65,7 @@ async function TranscriptsPageContent({ searchParams }: PageProps<'/transcripts'
               <tbody>
                 {rows.map((v) => (
                   <tr key={v._id.toString()}>
-                    <td className="font-mono text-xs">{v.code}</td>
+                    <td className="font-mono text-xs whitespace-nowrap">{v.code}</td>
                     <td>
                       <Link className="link" href={`/records/${v.record._id}`}>{fullName(v.record.student)}</Link>
                       <div className="text-xs text-muted">{v.record.student.matricNo}</div>

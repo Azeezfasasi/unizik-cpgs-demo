@@ -63,12 +63,12 @@ async function DigitizationPageContent() {
         description="Each physical box of result files is a batch. Sheets are scanned, indexed, checked by a second officer and locked by Records."
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
         <StatCard label="Boxes" value={batches.length} tone="navy" />
         <StatCard label="Being indexed" value={total(['DRAFT', 'RETURNED'])} tone="brand" />
         <StatCard label="Awaiting QA" value={total(['INDEXED'])} tone="brand" href="/digitization/qa" />
         <StatCard label="Locked" value={total(['LOCKED'])} tone="accent" />
-        <StatCard label="QA return rate" value={qaTotal ? `${Math.round((qaReturned / qaTotal) * 100)}%` : '—'} tone="danger" hint="Sheets returned at least once" />
+        <StatCard label="QA return rate" value={qaTotal ? `${Math.round((qaReturned / qaTotal) * 100)}%` : '—'} tone="danger" hint="Sheets returned at least once" className="col-span-2 lg:col-span-1" />
       </div>
 
       {toLock.length > 0 && (
@@ -80,7 +80,45 @@ async function DigitizationPageContent() {
       <div className={`mt-6 grid gap-6 ${can(user.role, 'batch:assign') ? 'xl:grid-cols-[1fr_22rem]' : ''}`}>
         <Card title="Boxes" bodyClass="p-0">
           {batches.length ? (
-            <div className="overflow-x-auto">
+            <>
+            {/* Phones: one card per box. */}
+            <ul className="divide-y divide-line md:hidden">
+              {batches.map((b) => {
+                const id = b._id.toString();
+                const all = statFor(id, ['DRAFT', 'RETURNED', 'INDEXED', 'QA_PASSED', 'LOCKED']);
+                const locked = statFor(id, ['LOCKED']);
+                const pct = b.estimatedSheets ? Math.min(100, Math.round((locked.n / b.estimatedSheets) * 100)) : 0;
+                return (
+                  <li key={id}>
+                    <Link href={`/digitization/batches/${id}`} className="block space-y-2 px-4 py-3 hover:bg-slate-50">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="font-mono text-sm font-semibold whitespace-nowrap text-brand">{b.boxCode}</div>
+                          <div className="truncate text-sm text-navy">{b.department?.name}</div>
+                        </div>
+                        <Badge tone={b.status === 'COMPLETED' ? 'success' : b.status === 'IN_PROGRESS' ? 'brand' : 'neutral'}>{titleCase(b.status)}</Badge>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1 text-xs text-muted">
+                        <Badge tone="neutral">P{b.priority}</Badge>
+                        {(b.condition === 'DAMAGED' || b.condition === 'SEVERELY_DAMAGED') && <Badge tone="danger">{titleCase(b.condition)}</Badge>}
+                        <span>{b.sessions.map((s) => s.label).join(', ')}</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div><span className="text-muted">Indexer</span><div className="truncate">{b.indexer?.name ?? <span className="text-amber-700">Unassigned</span>}</div></div>
+                        <div><span className="text-muted">QA</span><div className="truncate">{b.reviewer?.name ?? <span className="text-amber-700">Unassigned</span>}</div></div>
+                      </div>
+                      <div>
+                        <div className="flex justify-between text-xs tabular-nums">
+                          <span>{locked.n}/{b.estimatedSheets || '?'} sheets locked</span><span className="text-muted">{all.recs} records</span>
+                        </div>
+                        <div className="mt-1 h-1.5 rounded-full bg-slate-100"><div className="h-1.5 rounded-full bg-accent" style={{ width: `${pct}%` }} /></div>
+                      </div>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+            <div className="hidden overflow-x-auto md:block">
               <table className="table">
                 <thead><tr><th>Box</th><th>Department</th><th>Sessions</th><th>Team</th><th className="text-right">Progress</th><th>Status</th></tr></thead>
                 <tbody>
@@ -92,7 +130,7 @@ async function DigitizationPageContent() {
                     return (
                       <tr key={id} className="hover:bg-slate-50">
                         <td>
-                          <Link href={`/digitization/batches/${id}`} className="link font-mono">{b.boxCode}</Link>
+                          <Link href={`/digitization/batches/${id}`} className="link font-mono whitespace-nowrap">{b.boxCode}</Link>
                           <div className="mt-1 flex gap-1">
                             <Badge tone="neutral">P{b.priority}</Badge>
                             {(b.condition === 'DAMAGED' || b.condition === 'SEVERELY_DAMAGED') && <Badge tone="danger">{titleCase(b.condition)}</Badge>}
@@ -115,6 +153,7 @@ async function DigitizationPageContent() {
                 </tbody>
               </table>
             </div>
+            </>
           ) : <EmptyState title="No boxes yet">{can(user.role, 'batch:assign') ? 'Inventory the first box using the form.' : 'No boxes are assigned to you.'}</EmptyState>}
         </Card>
 
@@ -133,10 +172,10 @@ async function DigitizationPageContent() {
               </div>
               <div>
                 <label className="label" htmlFor="sessions">Sessions in the box</label>
-                <select id="sessions" name="sessions" multiple required className="input h-28">
+                <select id="sessions" name="sessions" multiple required className="input h-36 sm:h-28">
                   {sessions.map((s) => <option key={s._id.toString()} value={s._id.toString()}>{s.label}</option>)}
                 </select>
-                <p className="mt-1 text-xs text-muted">Hold Ctrl (or ⌘) to pick several.</p>
+                <p className="mt-1 text-xs text-muted">Hold Ctrl (or ⌘) to pick several. On a phone, tap each session.</p>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
