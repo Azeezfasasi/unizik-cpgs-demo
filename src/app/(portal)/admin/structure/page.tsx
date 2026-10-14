@@ -54,7 +54,7 @@ async function StructurePageContent() {
         description="Faculties, departments, programmes, sessions and the grading table used by indexing and submission checks. Click any item to edit or delete it. Items still referenced by results, students or staff cannot be deleted."
       />
 
-      <div className="grid gap-6 xl:grid-cols-2">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
         <Card title={`Faculties and departments (${faculties.length} / ${departments.length})`}>
           <ul className="mb-5 max-h-128 space-y-4 overflow-auto pr-1 text-sm">
             {faculties.map((f) => {
@@ -66,7 +66,7 @@ async function StructurePageContent() {
                     update={updateFaculty.bind(null, id)} remove={deleteFaculty.bind(null, id)}
                     summary={<span className="font-medium text-navy">{f.name} <span className="font-mono text-xs text-muted">{f.code}</span></span>}
                   >
-                    <div className="grid gap-2 sm:grid-cols-[1fr_7rem]">
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_7rem]">
                       <input name="name" defaultValue={f.name} required aria-label="Faculty name" className="input" />
                       <input name="code" defaultValue={f.code} required aria-label="Faculty code" className="input font-mono uppercase" />
                     </div>
@@ -86,7 +86,7 @@ async function StructurePageContent() {
                               </span>
                             }
                           >
-                            <div className="grid gap-2 sm:grid-cols-[1fr_7rem]">
+                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_7rem]">
                               <input name="name" defaultValue={d.name} required aria-label="Department name" className="input" />
                               <input name="code" defaultValue={d.code} required aria-label="Department code" className="input font-mono uppercase" />
                             </div>
@@ -101,7 +101,7 @@ async function StructurePageContent() {
               );
             })}
           </ul>
-          <div className="grid gap-5 border-t border-line pt-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-5 border-t border-line pt-4 sm:grid-cols-2">
             <ActionForm action={createFaculty} className="space-y-2" resetOnSuccess>
               <div className="text-sm font-semibold text-navy">Add faculty</div>
               <input name="name" required placeholder="Faculty of Agriculture" aria-label="Faculty name" className="input" />
@@ -137,7 +137,7 @@ async function StructurePageContent() {
                     }
                   >
                     <input name="name" defaultValue={p.name} required aria-label="Programme name" className="input" />
-                    <div className="grid gap-2 sm:grid-cols-2">
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                       <input name="code" defaultValue={p.code} required aria-label="Programme code" className="input font-mono uppercase" />
                       <select name="degreeType" defaultValue={p.degreeType} aria-label="Degree type" className="input">
                         {DEGREE_TYPES.map((d) => <option key={d}>{d}</option>)}
@@ -149,7 +149,7 @@ async function StructurePageContent() {
               );
             })}
           </ul>
-          <ActionForm action={createProgramme} className="grid gap-2 border-t border-line pt-4 sm:grid-cols-2" resetOnSuccess>
+          <ActionForm action={createProgramme} className="grid grid-cols-1 gap-2 border-t border-line pt-4 sm:grid-cols-2" resetOnSuccess>
             <div className="text-sm font-semibold text-navy sm:col-span-2">Add programme</div>
             <select name="department" required aria-label="Department" className="input sm:col-span-2">{deptOptions}</select>
             <input name="name" required placeholder="M.Sc. Agricultural Extension" aria-label="Programme name" className="input sm:col-span-2" />
@@ -160,7 +160,7 @@ async function StructurePageContent() {
         </Card>
 
         <Card title={`Sessions (${sessions.length})`}>
-          <ul className="mb-4 grid max-h-96 gap-0.5 overflow-auto pr-1 sm:grid-cols-2">
+          <ul className="mb-4 grid grid-cols-1 max-h-96 gap-0.5 overflow-auto pr-1 sm:grid-cols-2">
             {sessions.map((s) => {
               const id = s._id.toString();
               return (

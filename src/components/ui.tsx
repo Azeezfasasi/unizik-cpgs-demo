@@ -159,7 +159,7 @@ export function PageSkeleton() {
     <div className="animate-pulse" aria-busy="true" aria-label="Loading">
       <div className="mb-2 h-7 w-64 rounded bg-slate-200" />
       <div className="mb-8 h-4 w-96 max-w-full rounded bg-slate-200" />
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {[0, 1, 2, 3].map((i) => <div key={i} className="h-28 rounded-lg bg-slate-200" />)}
       </div>
       <div className="mt-6 h-72 rounded-lg bg-slate-200" />

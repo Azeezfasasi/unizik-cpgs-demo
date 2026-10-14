@@ -97,7 +97,7 @@ async function SheetPageContent({ params }: PageProps<'/sheets/[id]'>) {
       )}
       {illegible > 0 && <div className="mb-6"><Alert tone="warning">{illegible} row(s) flagged illegible and need the Head of Records&apos; attention.</Alert></div>}
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         {/* Left: source scan */}
         <div className="space-y-6 xl:sticky xl:top-6 xl:self-start">
           <Card title="Source scan" actions={<span className="text-xs text-muted">{files.length} file(s)</span>}>
@@ -232,7 +232,7 @@ async function SheetPageContent({ params }: PageProps<'/sheets/[id]'>) {
                 <a className="btn-outline" href={`/api/templates/result-sheet?sheet=${id_}&format=csv`}>CSV template</a>
               </div>
               <ActionForm action={importLegacyRows.bind(null, id_)} className="mt-4 space-y-3" resetOnSuccess>
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
                     <label className="label" htmlFor="import-file">Filled template</label>
                     <input id="import-file" type="file" name="file" accept=".xlsx,.csv" required

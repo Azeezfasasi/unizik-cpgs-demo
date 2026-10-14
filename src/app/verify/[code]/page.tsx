@@ -54,7 +54,7 @@ async function Result({ params }: { params: Promise<{ code: string }> }) {
           <div className="text-sm opacity-90">{b.text}</div>
         </div>
       </div>
-      <dl className="grid gap-x-6 gap-y-5 p-6 sm:grid-cols-2">
+      <dl className="grid grid-cols-1 gap-x-6 gap-y-5 p-6 sm:grid-cols-2">
         {[
           ['Graduand', r.name],
           ['Degree', r.degree],

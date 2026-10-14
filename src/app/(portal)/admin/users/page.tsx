@@ -164,7 +164,7 @@ async function UsersPageContent({ searchParams }: PageProps<'/admin/users'>) {
         {chip('Locked out', lockedCount, { security: 'locked' }, lockedCount ? 'border-red-300 bg-red-50 text-red-700' : 'border-line bg-white text-slate-700')}
       </div>
 
-      <form className="card mb-6 grid gap-2 p-4 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-8" role="search">
+      <form className="card mb-6 grid grid-cols-1 gap-2 p-4 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-8" role="search">
         <input name="q" defaultValue={sp.q} placeholder="Search name or email" aria-label="Search name or email" className="input sm:col-span-2" />
         <select name="role" defaultValue={sp.role ?? ''} aria-label="Role" className="input">
           <option value="">All roles</option>
@@ -201,7 +201,7 @@ async function UsersPageContent({ searchParams }: PageProps<'/admin/users'>) {
         </div>
       </form>
 
-      <div className="grid gap-6 xl:grid-cols-[1fr_22rem]">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_22rem]">
         <Card title={filtered ? `${total} of ${allCount} accounts match` : `${total} accounts`} bodyClass="p-0">
           {users.length === 0 ? <EmptyState title="No accounts match">Try a shorter search or clear some filters.</EmptyState> : (
           <>

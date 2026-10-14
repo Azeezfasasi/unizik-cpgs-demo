@@ -63,7 +63,7 @@ async function RecordsPageContent({ searchParams }: PageProps<'/records'>) {
           <input name="q" defaultValue={sp.q} className="input text-base" placeholder="Matric number, surname, other names or thesis title" aria-label="Search" autoFocus />
           <button className="btn-primary px-6">Search</button>
         </div>
-        <div className="mt-3 grid gap-2 sm:grid-cols-3 lg:grid-cols-7">
+        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3 lg:grid-cols-7">
           {!scopeIds && (
             <select name="faculty" defaultValue={sp.faculty ?? ''} className="input" aria-label="Faculty">
               <option value="">All faculties</option>

@@ -10,7 +10,7 @@ export function LegacyRowForm({ action, files }: {
 }) {
   return (
     <ActionForm action={action} resetOnSuccess className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div>
           <label className="label" htmlFor="matricNo">Matric no *</label>
           <input id="matricNo" name="matricNo" required className="input font-mono uppercase" autoComplete="off" />
@@ -24,7 +24,7 @@ export function LegacyRowForm({ action, files }: {
           <input id="otherNames" name="otherNames" required className="input" autoComplete="off" />
         </div>
       </div>
-      <div className="grid gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
         <div>
           <label className="label" htmlFor="sex">Sex</label>
           <select id="sex" name="sex" className="input"><option value="">—</option><option value="M">M</option><option value="F">F</option></select>
@@ -41,7 +41,7 @@ export function LegacyRowForm({ action, files }: {
           </select>
         </div>
       </div>
-      <fieldset className="grid gap-3 sm:grid-cols-5">
+      <fieldset className="grid grid-cols-1 gap-3 sm:grid-cols-5">
         <legend className="label mb-1">Semester GPAs and project (as on the PG Board result list)</legend>
         {[1, 2, 3, 4].map((n) => (
           <div key={n}>
@@ -57,7 +57,7 @@ export function LegacyRowForm({ action, files }: {
           </select>
         </div>
       </fieldset>
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
           <label className="label" htmlFor="effectiveDate">Effective date of graduation (WEF)</label>
           <input id="effectiveDate" name="effectiveDate" type="date" className="input" />
@@ -67,7 +67,7 @@ export function LegacyRowForm({ action, files }: {
           <input id="boardMeeting" name="boardMeeting" className="input" placeholder="e.g. 63rd" autoComplete="off" />
         </div>
       </div>
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
           <label className="label" htmlFor="thesisTitle">Thesis title</label>
           <input id="thesisTitle" name="thesisTitle" className="input" />
@@ -77,7 +77,7 @@ export function LegacyRowForm({ action, files }: {
           <input id="supervisor" name="supervisor" className="input" />
         </div>
       </div>
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="sm:col-span-2">
           <label className="label" htmlFor="sourceFile">Read from scan</label>
           <select id="sourceFile" name="sourceFile" className="input">

@@ -16,7 +16,7 @@ export function AmendmentForm({ recordId, current }: { recordId: string; current
     <div className="space-y-4">
       <ActionForm action={requestAmendment.bind(null, recordId)} className="space-y-3">
         <p className="text-xs text-muted">Edit only the values that are wrong. Unchanged fields are ignored.</p>
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
             <label className="label" htmlFor="a-cgpa">CGPA</label>
             <input id="a-cgpa" name="cgpa" type="number" step="0.01" min="0" max="5" defaultValue={current.cgpa} className="input" />

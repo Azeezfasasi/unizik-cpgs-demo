@@ -18,7 +18,7 @@ export default function Home() {
 
       <section className="relative overflow-hidden bg-navy text-white">
         <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'radial-gradient(circle at 80% 20%, #009689 0, transparent 45%), radial-gradient(circle at 10% 90%, #007a55 0, transparent 40%)' }} />
-        <div className="relative mx-auto grid max-w-6xl gap-8 px-4 pt-10 pb-14 sm:gap-10 sm:px-6 sm:pt-14 sm:pb-20 lg:grid-cols-2 lg:items-center">
+        <div className="relative mx-auto grid grid-cols-1 max-w-6xl gap-8 px-4 pt-10 pb-14 sm:gap-10 sm:px-6 sm:pt-14 sm:pb-20 lg:grid-cols-2 lg:items-center">
           <div>
             <p className="mb-3 inline-block rounded-full bg-white/10 px-3 py-1 text-xs font-medium tracking-wide text-teal-200">
               <span className="sm:hidden">CPGS · Nnamdi Azikiwe University</span>
@@ -47,7 +47,7 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="mx-auto grid w-full max-w-6xl gap-4 px-4 py-10 sm:gap-6 sm:px-6 sm:py-16 md:grid-cols-3">
+      <section className="mx-auto grid grid-cols-1 w-full max-w-6xl gap-4 px-4 py-10 sm:gap-6 sm:px-6 sm:py-16 md:grid-cols-3">
         {[
           { t: 'Legacy digitization', d: 'Paper result sheets are scanned to archival standard, indexed, checked by a second officer and locked.', c: 'bg-brand' },
           { t: 'Online submission', d: 'Departments submit final results online. Each sheet moves through HOD, Faculty, Records, Provost and Senate approval.', c: 'bg-accent' },

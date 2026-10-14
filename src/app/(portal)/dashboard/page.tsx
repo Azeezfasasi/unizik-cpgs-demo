@@ -88,7 +88,7 @@ async function DashboardContent({ searchParams }: PageProps<'/dashboard'>) {
 
       {denied && <div className="mb-6"><Alert tone="warning">You do not have access to that page.</Alert></div>}
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {can(user.role, 'submission:approve') && (
           <StatCard label="Awaiting your approval" value={counts.approvals} tone="brand" href="/approvals" hint="Sheets at your stage" />
         )}
@@ -100,7 +100,7 @@ async function DashboardContent({ searchParams }: PageProps<'/dashboard'>) {
         <StatCard label="Locked (archived)" value={locked.toLocaleString()} tone="accent" hint={records ? `${Math.round((locked / records) * 100)}% of all records` : 'No records yet'} />
       </div>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card title="Graduands by session">
           {sessionRows.length ? <BarList rows={sessionRows} unit="graduands" /> : <p className="text-sm text-muted">No records yet.</p>}
         </Card>
