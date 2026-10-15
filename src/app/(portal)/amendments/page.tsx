@@ -54,12 +54,14 @@ async function AmendmentsPageContent() {
               <div>
                 <Link href={`/records/${a.record._id}`} className="link">{fullName(a.record.student)}</Link>
                 <div className="text-xs text-muted"><span className="font-mono">{a.record.student.matricNo}</span> · {a.record.degree}</div>
-                <table className="table mt-3">
-                  <thead><tr><th>Field</th><th>Current</th><th>Proposed</th></tr></thead>
-                  <tbody>{a.changes.map((c, i) => (
-                    <tr key={i}><td className="font-medium">{c.field}</td><td className="text-red-700 line-through">{String(c.from ?? '—')}</td><td className="font-medium text-accent">{String(c.to ?? '—')}</td></tr>
-                  ))}</tbody>
-                </table>
+                <div className="mt-3 overflow-x-auto">
+                  <table className="table">
+                    <thead><tr><th>Field</th><th>Current</th><th>Proposed</th></tr></thead>
+                    <tbody>{a.changes.map((c, i) => (
+                      <tr key={i}><td className="font-medium">{c.field}</td><td className="text-red-700 line-through">{String(c.from ?? '—')}</td><td className="font-medium text-accent">{String(c.to ?? '—')}</td></tr>
+                    ))}</tbody>
+                  </table>
+                </div>
                 <p className="mt-3 text-sm"><b>Reason:</b> {a.reason}</p>
                 <p className="mt-1 text-xs text-muted">Requested by {a.requestedBy.name} on {fmtDate(a.createdAt)}</p>
                 {canDecide && !a.requestedBy._id.equals(user.id) && (
