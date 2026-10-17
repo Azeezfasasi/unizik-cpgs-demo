@@ -376,7 +376,11 @@ export async function importBoardList(batchId: string, _: ActionState, fd: FormD
     const order = (e: CellError) => `${e.sheet}\u0000${String(e.row).padStart(7, '0')}`;
     errors.sort((x, y) => order(x).localeCompare(order(y)));
     const additions = describeAdditions(resolved.additions);
-    const warnings = [...parsed.warnings, ...(additions ? [`Will be added to Academic structure: ${additions}`] : [])];
+    const warnings = [
+      ...parsed.warnings,
+      ...(resolved.notes.length ? [`Department names written differently were matched: ${resolved.notes.join('; ')}. Check these are right.`] : []),
+      ...(additions ? [`Will be added to Academic structure: ${additions}`] : []),
+    ];
 
     // Choices already made stay on screen (pre-selected) so Import can follow Check only.
     const asks = resolved.choices.filter((c) => !c.selected).length;

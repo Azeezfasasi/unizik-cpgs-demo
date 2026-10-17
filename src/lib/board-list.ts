@@ -127,7 +127,12 @@ export function parseBoardList(buf: ArrayBuffer, fileName: string) {
 
       const parsed = splitNameReg(nameText);
       const reg = (map.has('reg') ? str(get('reg')) : parsed.reg).replace(/\s+/g, '').toUpperCase();
-      if (!reg) { err('NAME/REG. NO.', `No registration number found for "${nameText}"`); return; }
+      if (!reg) {
+        // A heading inside the sheet ("62ND BOARD MEETING; SUPPLEMENTARY LIST"): no result on the row.
+        if (!str(get('department')) && !str(get('faculty')) && !str(get('degree')) && !str(get('fcgpa'))) return;
+        err('NAME/REG. NO.', `No registration number found for "${nameText}"`);
+        return;
+      }
 
       const sems = (['sem1', 'sem2', 'sem3', 'sem4'] as const).map((f) => num(get(f)));
       const last = sems.findLastIndex((v) => v !== undefined);
@@ -186,6 +191,74 @@ function nameKey(s: string) {
 }
 const compact = (s: string) => s.toUpperCase().replace(/[^A-Z]/g, '');
 
+/** Abbreviations seen on board lists ("Medical Lab Sci.", "Educational Mgt&policy", "English Lang.&lit"). */
+const ABBREVIATIONS: Record<string, string> = {
+  LAB: 'LABORATORY', SCI: 'SCIENCE', SC: 'SCIENCE', MGT: 'MANAGEMENT', MGMT: 'MANAGEMENT', MGMNT: 'MANAGEMENT',
+  LANG: 'LANGUAGE', LIT: 'LITERATURE', TECH: 'TECHNOLOGY', BIOTECH: 'BIOTECHNOLOGY', CHEM: 'CHEMISTRY', ENGR: 'ENGINEERING',
+  ENGG: 'ENGINEERING', EDUC: 'EDUCATION', EDU: 'EDUCATION', ADMIN: 'ADMINISTRATION', STUD: 'STUDIES', INTL: 'INTERNATIONAL',
+  ECON: 'ECONOMICS', ECONS: 'ECONOMICS', AGRIC: 'AGRICULTURAL', GEOG: 'GEOGRAPHY', PHYS: 'PHYSICS',
+  MATHS: 'MATHEMATICS', MATH: 'MATHEMATICS', STATS: 'STATISTICS', STAT: 'STATISTICS', COMP: 'COMPUTER', ELECT: 'ELECTRICAL',
+  MECH: 'MECHANICAL', DEPT: '', DEPARTMENT: '', FACULTY: '',
+};
+const STOP = new Set(['AND', 'OF', 'THE', 'FOR', 'IN', '']);
+const singular = (w: string) => (w.length > 3 ? w.replace(/S$/, '') : w);
+
+/** Words of a name, upper-case, abbreviations expanded, without "and/of" or plural endings. */
+function wordsOf(s: string) {
+  return s.toUpperCase().replace(/&/g, ' AND ').replace(/[^A-Z]+/g, ' ').split(' ')
+    .map((w) => ABBREVIATIONS[w] ?? w).filter((w) => !STOP.has(w)).map(singular);
+}
+
+/** Edit distance, for typos such as "Pharmceutical". */
+function editDistance(a: string, b: string) {
+  if (Math.abs(a.length - b.length) > 2) return 3;
+  const prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    let diag = prev[0];
+    prev[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const tmp = prev[j];
+      prev[j] = Math.min(prev[j] + 1, prev[j - 1] + 1, diag + (a[i - 1] === b[j - 1] ? 0 : 1));
+      diag = tmp;
+    }
+  }
+  return prev[b.length];
+}
+
+/** A list word stands for a structure word: same, shortened ("Met" for Metallurgical), or a small typo. */
+function wordFits(listWord: string, word: string) {
+  if (listWord === word) return true;
+  if (listWord.length >= 3 && word.startsWith(listWord)) return true;
+  return listWord.length >= 6 && editDistance(listWord, word) <= (listWord.length >= 9 ? 2 : 1);
+}
+
+/**
+ * Whether a department name on the list refers to a structure department: every list word fits the
+ * structure words in order (two list words may join, "Micro Biology" → Microbiology), leaving at most
+ * one structure word unmatched when the list gives two or more words.
+ */
+function nameFits(list: string, name: string) {
+  const a = wordsOf(list), b = wordsOf(name);
+  if (!a.length || !b.length) return false;
+  if (a.join('') === b.join('')) return true;
+  let j = 0, matched = 0;
+  for (let i = 0; i < a.length; i++) {
+    let found = false;
+    while (j < b.length && !found) {
+      if (i + 1 < a.length && wordFits(a[i] + a[i + 1], b[j])) { i++; found = true; } else if (wordFits(a[i], b[j])) found = true;
+      j++;
+    }
+    if (!found) return false;
+    matched++;
+  }
+  const unmatched = b.length - matched;
+  return unmatched === 0 || (a.length >= 2 && unmatched <= 1);
+}
+
+/** Initials of a name as written ("Medical Lab Sci." → MLS), for matching department codes. */
+const initialsOf = (s: string) => s.toUpperCase().replace(/&/g, ' ').replace(/[^A-Z]+/g, ' ').split(' ')
+  .filter((w) => w && !STOP.has(w)).map((w) => w[0]).join('');
+
 type DegreeType = (typeof DEGREE_TYPES)[number];
 /** Programme-type spellings on board lists, with the label used to name a new programme. */
 const DEGREES: Record<string, { type: DegreeType; label: string }> = {
@@ -196,6 +269,8 @@ const DEGREES: Record<string, { type: DegreeType; label: string }> = {
   MENG: { type: 'MSc', label: 'M.Eng.' }, MTECH: { type: 'MSc', label: 'M.Tech.' }, MARCH: { type: 'MSc', label: 'M.Arch.' },
   MPH: { type: 'MSc', label: 'MPH' }, MPA: { type: 'MSc', label: 'MPA' }, MLIS: { type: 'MSc', label: 'MLIS' }, MLS: { type: 'MSc', label: 'MLS' },
   MSCED: { type: 'MEd', label: 'M.Sc.Ed.' }, MFA: { type: 'MA', label: 'MFA' }, MMUS: { type: 'MA', label: 'M.Mus.' },
+  MPHARM: { type: 'MSc', label: 'M.Pharm.' }, MCOM: { type: 'MSc', label: 'M.Com.' }, MURP: { type: 'MSc', label: 'MURP' },
+  MIT: { type: 'MSc', label: 'MIT' }, MPM: { type: 'MSc', label: 'MPM' }, MPS: { type: 'MSc', label: 'MPS' },
 };
 const degreeOf = (text: string) => DEGREES[compact(text)] ?? null;
 
@@ -249,7 +324,29 @@ export async function resolveBoardRows(rows: BoardRow[], allowedDepartments: Typ
   const departments = allowedDepartments ? allDepartments.filter((d) => allowedDepartments.some((a) => a.equals(d._id))) : allDepartments;
   const facKey = new Map(faculties.map((f) => [String(f._id), nameKey(f.name)]));
   const byKey = new Map<string, typeof departments>();
-  for (const d of departments) for (const k of [nameKey(d.name), d.code.toUpperCase()]) byKey.set(k, [...(byKey.get(k) ?? []), d]);
+  // A department is listed once per key even when its name and code give the same key ("Law" / LAW).
+  for (const d of departments) for (const k of new Set([nameKey(d.name), d.code.toUpperCase()])) byKey.set(k, [...(byKey.get(k) ?? []), d]);
+  const facultyName = new Map(faculties.map((f) => [String(f._id), f.name]));
+  /** Whether faculty text on the list refers to this faculty (exact, abbreviated, or sharing a word stem). */
+  const facultyFits = (text: string, facultyId: Types.ObjectId) => {
+    const name = facultyName.get(String(facultyId)) ?? '';
+    if (!text || nameKey(name) === nameKey(text) || nameFits(text, name)) return true;
+    const stem = nameKey(text).split(' ')[0]?.slice(0, 6);
+    return !!stem && stem.length >= 4 && (nameKey(name).split(' ')[0] ?? '').startsWith(stem);
+  };
+  const fuzzyCache = new Map<string, typeof departments>();
+  /** Departments a list name refers to when its spelling differs (abbreviations, typos, initials as code). */
+  const fuzzyDepartments = (text: string, facultyText: string) => {
+    const key = `${text}|${facultyText}`;
+    if (!fuzzyCache.has(key)) {
+      const inFaculty = (d: (typeof departments)[number]) => !facultyText || facultyFits(facultyText, d.faculty);
+      let found = departments.filter((d) => nameFits(text, d.name) && inFaculty(d));
+      if (!found.length) found = departments.filter((d) => initialsOf(text).length >= 2 && initialsOf(text) === d.code.replace(/\d+$/, '') && inFaculty(d));
+      fuzzyCache.set(key, found);
+    }
+    return fuzzyCache.get(key)!;
+  };
+  const notes: string[] = [];
 
   // Programmes students already have records for, to settle re-imports without asking again.
   const students = await Student.find({ matricNo: { $in: rows.map((r) => r.row.matricNo) } }).select('matricNo').lean();
@@ -269,8 +366,7 @@ export async function resolveBoardRows(rows: BoardRow[], allowedDepartments: Typ
     const key = nameKey(text);
     const exact = faculties.filter((f) => nameKey(f.name) === key);
     if (exact.length === 1) return { _id: exact[0]._id, name: exact[0].name };
-    const stem = key.split(' ')[0]?.slice(0, 6);
-    const near = stem && stem.length >= 4 ? faculties.filter((f) => nameKey(f.name).split(' ')[0]?.startsWith(stem)) : [];
+    const near = text ? faculties.filter((f) => facultyFits(text, f._id)) : [];
     if (near.length === 1) return { _id: near[0]._id, name: near[0].name };
     if (!text) return null;
     let f = newFaculty.get(key);
@@ -292,11 +388,29 @@ export async function resolveBoardRows(rows: BoardRow[], allowedDepartments: Typ
   for (const r of rows) {
     const at = { sheet: r.sheet, row: r.line };
     const dText = r.departmentText || r.facultyText;
+    const rowDegree = degreeOf(r.degreeText);
     let cands = byKey.get(nameKey(dText)) ?? byKey.get(dText.toUpperCase()) ?? [];
-    if (cands.length > 1 && r.facultyText) cands = cands.filter((d) => facKey.get(String(d.faculty)) === nameKey(r.facultyText));
+    let fuzzy = false;
+    if (!cands.length && dText && !newDept.has(nameKey(dText))) { cands = fuzzyDepartments(dText, r.facultyText); fuzzy = cands.length > 0; }
+    if (cands.length > 1 && r.facultyText) {
+      const inFaculty = cands.filter((d) => facKey.get(String(d.faculty)) === nameKey(r.facultyText) || facultyFits(r.facultyText, d.faculty));
+      if (inFaculty.length) cands = inFaculty;
+    }
+    // Several left (e.g. LAW): the one that runs this kind of programme.
+    if (cands.length > 1 && rowDegree) {
+      const running = cands.filter((d) => programmes.some((p) => p.department.equals(d._id) && p.degreeType === rowDegree.type));
+      if (running.length) cands = running;
+    }
     if (cands.length > 1) {
-      once(`d:${nameKey(dText)}`, { ...at, column: 'DEPARTMENT', message: `"${dText}" matches more than one department; rename one in Academic structure` });
+      once(`d:${nameKey(dText)}`, {
+        ...at, column: 'DEPARTMENT',
+        message: `"${dText}" could be ${cands.map((d) => d.name).join(' or ')}; write the department name in full (or add the faculty)`,
+      });
       continue;
+    }
+    if (fuzzy && cands.length === 1) {
+      const note = `"${dText}" matched to ${cands[0].name} (${cands[0].code})`;
+      if (!notes.includes(note)) notes.push(note);
     }
     let dept: { _id: Types.ObjectId; name: string; code: string } | undefined = cands[0];
     if (!dept) {
@@ -371,7 +485,7 @@ export async function resolveBoardRows(rows: BoardRow[], allowedDepartments: Typ
     }
     targets.set(r.uid, { departmentId: dept._id, programmeId: prog._id, programmeName: prog.name, degreeType: deg.type });
   }
-  return { targets, errors, choices, additions };
+  return { targets, errors, choices, additions, notes };
 }
 
 /** Adds the planned faculties, departments and programmes (in that order). */
