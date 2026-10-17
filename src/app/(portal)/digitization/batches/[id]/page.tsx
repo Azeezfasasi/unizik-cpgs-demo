@@ -115,6 +115,7 @@ async function BatchPageContent({ params }: PageProps<'/digitization/batches/[id
                 action={importBoardList.bind(null, id)}
                 boxSessions={sessions.map((s) => ({ id: s._id.toString(), label: s.label }))}
                 otherSessions={otherSessions.map((s) => ({ id: s._id.toString(), label: s.label }))}
+                canAddStructure={can(user.role, 'structure:extend')}
               />
             </Card>
           )}

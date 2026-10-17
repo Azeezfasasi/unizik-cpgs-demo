@@ -6,14 +6,16 @@ import type { ActionState } from '@/lib/action-state';
 
 type Session = { id: string; label: string };
 type Choice = {
-  line: number; matricNo: string; name: string; group: string; department: string; degreeType: string;
+  uid: number; sheet: string; line: number; matricNo: string; name: string; group: string; department: string; degreeType: string;
   options: { id: string; name: string }[]; selected?: string;
 };
 
 /** Board list upload. When a department has several programmes of a type, asks which one per graduand. */
-export function BoardImportForm({ action, boxSessions, otherSessions }: {
+export function BoardImportForm({ action, boxSessions, otherSessions, canAddStructure }: {
   action: (prev: ActionState, fd: FormData) => Promise<ActionState>;
   boxSessions: Session[]; otherSessions: Session[];
+  /** Whether this user may add missing departments and programmes from the list. */
+  canAddStructure: boolean;
 }) {
   return (
     <ActionForm action={action} className="space-y-3" after={(state) => (state.data?.choices ? <ProgrammeChoices key={state.data.choices} json={state.data.choices} /> : null)}>
@@ -36,6 +38,15 @@ export function BoardImportForm({ action, boxSessions, otherSessions }: {
           </select>
         </div>
       </div>
+      {canAddStructure && (
+        <label className="flex items-start gap-2 rounded-md border border-line bg-slate-50 p-3 text-sm">
+          <input type="checkbox" name="addMissing" className="mt-1 accent-brand" />
+          <span>
+            <b>Add missing departments and programmes</b> to Academic structure from this list (FACULTY, DEPARTMENT and PROG.).
+            Existing ones are never changed. Use Check only first to see exactly what would be added.
+          </span>
+        </label>
+      )}
       <div className="flex flex-wrap gap-2">
         <SubmitButton name="mode" value="check" className="btn-outline" pendingText="Checking…">Check only</SubmitButton>
         <SubmitButton name="mode" value="import" pendingText="Importing…">Import</SubmitButton>
@@ -51,7 +62,7 @@ export function BoardImportForm({ action, boxSessions, otherSessions }: {
 
 function ProgrammeChoices({ json }: { json: string }) {
   const choices = JSON.parse(json) as Choice[];
-  const [values, setValues] = useState<Record<number, string>>(() => Object.fromEntries(choices.filter((c) => c.selected).map((c) => [c.line, c.selected!])));
+  const [values, setValues] = useState<Record<number, string>>(() => Object.fromEntries(choices.filter((c) => c.selected).map((c) => [c.uid, c.selected!])));
   const groups = [...new Set(choices.map((c) => c.group))].map((g) => choices.filter((c) => c.group === g));
 
   return (
@@ -69,7 +80,7 @@ function ProgrammeChoices({ json }: { json: string }) {
               <select aria-label={`Set all ${first.department} ${first.degreeType} graduands to`} className="input w-auto py-1 text-xs" value=""
                 onChange={(e) => {
                   const v = e.target.value;
-                  if (v) setValues((cur) => ({ ...cur, ...Object.fromEntries(rows.map((r) => [r.line, v])) }));
+                  if (v) setValues((cur) => ({ ...cur, ...Object.fromEntries(rows.map((r) => [r.uid, v])) }));
                 }}>
                 <option value="">Set all to…</option>
                 {first.options.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
@@ -77,14 +88,14 @@ function ProgrammeChoices({ json }: { json: string }) {
             </div>
             <ul className="divide-y divide-amber-200 rounded-md border border-amber-200 bg-white">
               {rows.map((r) => (
-                <li key={r.line} className="grid grid-cols-1 gap-2 px-3 py-2 sm:grid-cols-[minmax(0,1fr)_16rem] sm:items-center">
+                <li key={r.uid} className="grid grid-cols-1 gap-2 px-3 py-2 sm:grid-cols-[minmax(0,1fr)_16rem] sm:items-center">
                   <div className="min-w-0 text-sm">
-                    <span className="text-xs text-muted">Row {r.line} · </span>
+                    <span className="text-xs text-muted">{r.sheet} · row {r.line} · </span>
                     <span className="font-mono text-xs">{r.matricNo}</span>{' '}
                     <span className="text-navy">{r.name}</span>
                   </div>
-                  <select name={`programme_${r.line}`} required aria-label={`Programme for ${r.name}`} className="input py-1.5 text-sm"
-                    value={values[r.line] ?? ''} onChange={(e) => setValues((cur) => ({ ...cur, [r.line]: e.target.value }))}>
+                  <select name={`programme_${r.uid}`} required aria-label={`Programme for ${r.name}`} className="input py-1.5 text-sm"
+                    value={values[r.uid] ?? ''} onChange={(e) => setValues((cur) => ({ ...cur, [r.uid]: e.target.value }))}>
                     <option value="">Choose programme…</option>
                     {r.options.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
                   </select>

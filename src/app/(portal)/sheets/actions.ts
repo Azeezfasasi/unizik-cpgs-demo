@@ -14,7 +14,8 @@ import { FLOW, type FlowStage } from '@/lib/workflow';
 import { checkRow, notifySheet, refreshCount, snapshotRows, upsertGraduand } from '@/lib/sheets';
 import { parseTemplate } from '@/lib/template';
 import { boxDepartmentIds } from '@/lib/boxes';
-import { parseBoardList, resolveBoardRows } from '@/lib/board-list';
+import { applyStructureAdditions, describeAdditions, parseBoardList, resolveBoardRows } from '@/lib/board-list';
+import { can } from '@/lib/rbac';
 import { GraduandRowSchema, objectId } from '@/lib/validators';
 import type { ActionState, CellError } from '@/lib/action-state';
 import { AcademicSession, DigitizationBatch, GraduandRecord, Programme, ResultSheet, StoredFile, nextSheetReference } from '@/models';
@@ -347,6 +348,8 @@ export async function importBoardList(batchId: string, _: ActionState, fd: FormD
     const session = await AcademicSession.findById(sessionId).lean();
     if (!session) missing('Session not found');
     const checkOnly = fd.get('mode') === 'check';
+    const addMissing = fd.get('addMissing') === 'on';
+    if (addMissing && !can(user.role, 'structure:extend')) fail('Your role cannot add departments or programmes to Academic structure');
 
     const parsed = parseBoardList(await f.arrayBuffer(), f.name);
     if (!parsed.rows.length) return { ok: false, message: `${parsed.errors.length} problem(s) found. Nothing was saved.`, errors: parsed.errors };
@@ -357,20 +360,24 @@ export async function importBoardList(batchId: string, _: ActionState, fd: FormD
     const errors: CellError[] = [...parsed.errors];
     const sessionOf = new Map<number, Types.ObjectId>();
     for (const r of parsed.rows) {
-      if (!r.sessionText) { sessionOf.set(r.line, session!._id); continue; }
+      if (!r.sessionText) { sessionOf.set(r.uid, session!._id); continue; }
       const s = sessionsByLabel.get(r.sessionText.replace(/\s+/g, '').replace('-', '/'));
-      if (s) sessionOf.set(r.line, s);
-      else errors.push({ sheet: 'Board list', row: r.line, column: 'SESSION', message: `Unknown session "${r.sessionText}"` });
+      if (s) sessionOf.set(r.uid, s);
+      else errors.push({ sheet: r.sheet, row: r.line, column: 'SESSION', message: `Unknown session "${r.sessionText}"` });
     }
-    // Programmes picked on screen for rows whose department has several of that type (field programme_<row>).
+    // Programmes picked on screen for rows whose department has several of that type (field programme_<uid>).
     const picked = new Map<number, string>();
     for (const [k, v] of fd) {
       const m = k.match(/^programme_(\d+)$/);
       if (m && typeof v === 'string' && v) picked.set(Number(m[1]), v);
     }
-    const resolved = await resolveBoardRows(parsed.rows, boxDepartmentIds(b!), picked);
+    const resolved = await resolveBoardRows(parsed.rows, boxDepartmentIds(b!), picked, addMissing);
     errors.push(...resolved.errors);
-    errors.sort((x, y) => x.row - y.row);
+    const order = (e: CellError) => `${e.sheet}\u0000${String(e.row).padStart(7, '0')}`;
+    errors.sort((x, y) => order(x).localeCompare(order(y)));
+    const additions = describeAdditions(resolved.additions);
+    const warnings = [...parsed.warnings, ...(additions ? [`Will be added to Academic structure: ${additions}`] : [])];
+
     // Choices already made stay on screen (pre-selected) so Import can follow Check only.
     const asks = resolved.choices.filter((c) => !c.selected).length;
     const choiceData = resolved.choices.length ? { choices: JSON.stringify(resolved.choices) } : undefined;
@@ -383,6 +390,7 @@ export async function importBoardList(batchId: string, _: ActionState, fd: FormD
         ok: false,
         message: `${parts.charAt(0).toUpperCase()}${parts.slice(1)}. Nothing was saved yet${asks ? '; after choosing, press Check only or Import again' : ''}.`,
         errors: errors.length ? errors : undefined,
+        warnings,
         data: choiceData,
       };
     }
@@ -394,8 +402,8 @@ export async function importBoardList(batchId: string, _: ActionState, fd: FormD
     };
     const groups = new Map<string, Group>();
     for (const r of parsed.rows) {
-      const t = resolved.targets.get(r.line)!;
-      const sid = sessionOf.get(r.line)!;
+      const t = resolved.targets.get(r.uid)!;
+      const sid = sessionOf.get(r.uid)!;
       const key = `${t.programmeId}|${sid}`;
       const g = groups.get(key) ?? { ...t, sessionId: sid, rows: [] };
       g.rows.push(r);
@@ -406,18 +414,17 @@ export async function importBoardList(batchId: string, _: ActionState, fd: FormD
       const s = existing.find((x) => x.programme.equals(g.programmeId) && x.session.equals(g.sessionId));
       if (!s) continue;
       if (!['DRAFT', 'RETURNED'].includes(s.status)) {
-        errors.push({ sheet: 'Board list', row: g.rows[0].line, column: 'PROG.', message: `Sheet ${s.reference} (${g.programmeName}) in this box is already ${s.status === 'LOCKED' ? 'locked' : 'with QA'}; its rows can no longer change` });
+        errors.push({ sheet: g.rows[0].sheet, row: g.rows[0].line, column: 'PROG.', message: `Sheet ${s.reference} (${g.programmeName}) in this box is already ${s.status === 'LOCKED' ? 'locked' : 'with QA'}; its rows can no longer change` });
       } else g.sheet = s;
     }
 
     // The same checks as single-row indexing (matric format, student in another department, duplicates).
-    const warnings: string[] = [];
     for (const g of groups.values()) {
       const like = g.sheet ?? { _id: new Types.ObjectId(), department: g.departmentId, programme: g.programmeId, session: g.sessionId, origin: 'LEGACY' as const };
       for (const r of g.rows) {
         const c = await checkRow(like, r.row, g.degreeType);
-        c.errors.forEach((m) => errors.push({ sheet: 'Board list', row: r.line, column: 'NAME/REG. NO.', message: m }));
-        c.warnings.forEach((w) => warnings.push(`Row ${r.line} (${r.row.matricNo}): ${w}`));
+        c.errors.forEach((m) => errors.push({ sheet: r.sheet, row: r.line, column: 'REGISTRATION NUMBER', message: m }));
+        c.warnings.forEach((w) => warnings.push(`${r.sheet} row ${r.line} (${r.row.matricNo}): ${w}`));
       }
     }
     if (errors.length) return { ok: false, message: `${errors.length} problem(s) found. Nothing was saved.`, errors, warnings, data: choiceData };
@@ -436,6 +443,9 @@ export async function importBoardList(batchId: string, _: ActionState, fd: FormD
     }
 
     const refs: string[] = [];
+    // New structure goes in first and on its own: the row writes below look programmes up outside
+    // the transaction, and the items are valid on their own (a re-import reuses them).
+    await applyStructureAdditions(resolved.additions, null);
     await withTxn(async () => {
       for (const g of list) {
         const sheet = g.sheet ?? await ResultSheet.create({
@@ -448,13 +458,21 @@ export async function importBoardList(batchId: string, _: ActionState, fd: FormD
       }
     });
     if (b!.status === 'INVENTORIED') { b!.status = 'IN_PROGRESS'; await b!.save(); }
+    if (additions) {
+      await audit(user, 'structure.board_additions', 'Structure', undefined, undefined, {
+        file: f.name,
+        faculties: resolved.additions.faculties.map((x) => x.code),
+        departments: resolved.additions.departments.map((x) => x.code),
+        programmes: resolved.additions.programmes.map((x) => x.code),
+      });
+    }
     await audit(user, 'batch.board_import', 'DigitizationBatch', batchId, undefined, {
       file: f.name, meeting: parsed.meeting ?? null, session: session!.label, rows: parsed.rows.length, sheets: refs, newSheets,
     });
     return {
       ok: true,
-      message: `Imported ${parsed.rows.length} graduands${meeting} into ${list.length} sheet(s) (${newSheets} new): ${refs.join(', ')}. Attach the scanned board list to each sheet, check the rows, then send them to QA.`,
-      warnings,
+      message: `Imported ${parsed.rows.length} graduands${meeting} into ${list.length} sheet(s) (${newSheets} new)${additions ? `, and added ${additions} to Academic structure` : ''}. Attach the scanned board list to each sheet, check the rows, then send them to QA.`,
+      warnings: parsed.warnings,
     };
   });
 }
