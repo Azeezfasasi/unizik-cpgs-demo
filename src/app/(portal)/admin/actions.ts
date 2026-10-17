@@ -19,6 +19,8 @@ import Setting from '@/models/Setting';
 import { describeUsage, usageOf, type StructureKind } from '@/lib/structure';
 import { getGradingBands, GRADING_KEY } from '@/lib/settings';
 import type { Band } from '@/lib/grading';
+import { withTxn } from '@/lib/txn';
+import { applyStructurePlan, parseStructureFile, planStructureImport } from '@/lib/structure-import';
 
 function tempPassword() {
   // 16 chars, guaranteed upper, lower and digit.
@@ -119,6 +121,54 @@ export async function resetCredentials(userId: string, _: ActionState, fd: FormD
 }
 
 // ---------------------------------------------------------------- academic structure
+
+/**
+ * Bulk-adds faculties, departments and programmes from the structure template (Excel or CSV).
+ * Every row is checked first; nothing is saved unless all rows are valid. With mode=check it
+ * only reports what would be added.
+ */
+export async function importStructure(_: ActionState, fd: FormData): Promise<ActionState> {
+  return run(async () => {
+    const admin = await requirePermission('structure:manage');
+    const file = fd.get('file');
+    if (!(file instanceof File) || !file.size) fail('Choose the filled structure template (.xlsx or .csv)');
+    const f = file as File;
+    if (!/\.(xlsx|csv)$/i.test(f.name)) fail('Upload the template as an Excel (.xlsx) or CSV (.csv) file');
+    if (f.size > 5 * 1024 * 1024) fail('File is larger than 5 MB');
+    const checkOnly = fd.get('mode') === 'check';
+
+    const { rows, errors } = parseStructureFile(await f.arrayBuffer(), f.name);
+    if (errors.length) return { ok: false, message: `${errors.length} problem(s) found. Nothing was saved.`, errors };
+    await db();
+    const planned = await planStructureImport(rows);
+    if (planned.errors.length) {
+      return { ok: false, message: `${planned.errors.length} problem(s) found. Nothing was saved.`, errors: planned.errors, warnings: planned.warnings };
+    }
+    const { plan } = planned;
+    const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+    const summary = (c: { faculties: number; departments: number; programmes: number }) =>
+      `${count(c.faculties, 'faculty', 'faculties')}, ${count(c.departments, 'department', 'departments')} and ${count(c.programmes, 'programme', 'programmes')}`;
+    const adds = summary({ faculties: plan.faculties.length, departments: plan.departments.length, programmes: plan.programmes.length });
+    const kept = plan.existing.faculties + plan.existing.departments + plan.existing.programmes;
+    const keptNote = kept ? ` ${count(kept, 'item already exists and is left as it is', 'items already exist and are left as they are')}.` : '';
+    if (checkOnly) {
+      return { ok: true, message: `Check passed for ${count(rows.length, 'row', 'rows')}: would add ${adds}.${keptNote} Nothing was saved yet.`, warnings: planned.warnings };
+    }
+    if (!plan.faculties.length && !plan.departments.length && !plan.programmes.length) {
+      return { ok: true, message: `Nothing new to add: everything in ${f.name} already exists.`, warnings: planned.warnings };
+    }
+    const created = await withTxn((session) => applyStructurePlan(plan, session));
+    await audit(admin, 'structure.bulk_import', 'Structure', undefined, undefined, {
+      file: f.name, rows: rows.length, ...created,
+      codes: { faculties: plan.faculties.map((x) => x.code), departments: plan.departments.map((x) => x.code), programmes: plan.programmes.map((x) => x.code) },
+    });
+    return {
+      ok: true,
+      message: `Added ${summary(created)} from ${f.name}.${keptNote}`,
+      warnings: planned.warnings,
+    };
+  });
+}
 
 export async function createFaculty(_: ActionState, fd: FormData): Promise<ActionState> {
   return run(async () => {

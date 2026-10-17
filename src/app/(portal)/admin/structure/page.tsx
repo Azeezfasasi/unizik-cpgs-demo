@@ -13,7 +13,7 @@ import { ActionForm, SubmitButton } from '@/components/forms';
 import { EditPanel } from '@/components/EditPanel';
 import {
   createDepartment, createFaculty, createProgramme, createSession, deleteDepartment, deleteFaculty, deleteProgramme,
-  deleteSession, saveGradingBands, updateDepartment, updateFaculty, updateProgramme, updateSession,
+  deleteSession, importStructure, saveGradingBands, updateDepartment, updateFaculty, updateProgramme, updateSession,
 } from '../actions';
 
 export const metadata: Metadata = { title: 'Academic structure' };
@@ -53,6 +53,36 @@ async function StructurePageContent() {
         title="Academic structure"
         description="Faculties, departments, programmes, sessions and the grading table used by indexing and submission checks. Click any item to edit or delete it. Items still referenced by results, students or staff cannot be deleted."
       />
+
+      <Card title="Bulk add faculties, departments and programmes" className="mb-6">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_1fr]">
+          <div className="space-y-3 text-sm">
+            <p>
+              Fill one row per programme with its department and faculty on the same row. A row can stop after the
+              department or faculty to add just that. Existing items are matched by code and left unchanged; only new ones are added.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <a href="/api/templates/structure" className="btn-outline py-1.5 text-xs">Template (Excel)</a>
+              <a href="/api/templates/structure?format=csv" className="btn-outline py-1.5 text-xs">Template (CSV)</a>
+              <a href="/api/templates/structure?current=1" className="btn-outline py-1.5 text-xs">Current structure (Excel)</a>
+            </div>
+            <p className="text-xs text-muted">
+              Tip: download the current structure to see the codes already in use, add your new rows to it and upload it back.
+            </p>
+          </div>
+          <ActionForm action={importStructure} className="space-y-3">
+            <div>
+              <label className="label" htmlFor="structure-file">Filled template (.xlsx or .csv)</label>
+              <input id="structure-file" name="file" type="file" required accept=".xlsx,.csv" className="input" />
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <SubmitButton name="mode" value="check" className="btn-outline" pendingText="Checking…">Check only</SubmitButton>
+              <SubmitButton name="mode" value="import" pendingText="Importing…">Import</SubmitButton>
+            </div>
+            <p className="text-xs text-muted">Every row is checked first. If any row has a problem, nothing is saved and the problems are listed by row.</p>
+          </ActionForm>
+        </div>
+      </Card>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
         <Card title={`Faculties and departments (${faculties.length} / ${departments.length})`}>
