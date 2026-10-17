@@ -10,7 +10,8 @@ import { titleCase } from '@/lib/format';
 import { boxDepartmentLabel } from '@/lib/boxes';
 import { AcademicSession, Department, DigitizationBatch, ResultSheet } from '@/models';
 import { Badge, Card, EmptyState, PageHeader, StatCard, PageSkeleton } from '@/components/ui';
-import { SheetTable } from '@/components/SheetTable';
+import { BulkSheetForm } from '@/components/BulkSheetForm';
+import { bulkLockSheets } from '../sheets/actions';
 import { ActionForm, SubmitButton } from '@/components/forms';
 import { createBatch } from './actions';
 
@@ -76,7 +77,9 @@ async function DigitizationPageContent() {
 
       {toLock.length > 0 && (
         <Card title={`Ready to verify and lock (${toLock.length})`} className="mt-6" bodyClass="p-0">
-          <SheetTable rows={toLock} empty="" />
+          <BulkSheetForm rows={toLock} empty=""
+            action={bulkLockSheets} submitLabel="Lock selected" pendingText="Locking…"
+            option={{ name: 'acceptIllegible', label: 'Also lock sheets that have rows flagged illegible (otherwise they are skipped)' }} />
         </Card>
       )}
 

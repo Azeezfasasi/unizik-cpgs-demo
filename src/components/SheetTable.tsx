@@ -7,13 +7,20 @@ export type SheetRow = {
   session?: string; recordCount: number; statusSince?: Date | null; boxCode?: string;
 };
 
-export function SheetTable({ rows, empty, showDept = true }: { rows: SheetRow[]; empty: string; showDept?: boolean }) {
+export function SheetTable({ rows, empty, showDept = true, selectName, selected, onSelect }: {
+  rows: SheetRow[]; empty: string; showDept?: boolean;
+  /** Adds a checkbox per row (value = sheet id) for bulk actions in an enclosing form. */
+  selectName?: string;
+  /** Controlled selection, used with selectName from a client component. */
+  selected?: Set<string>; onSelect?: (id: string, checked: boolean) => void;
+}) {
   if (!rows.length) return <EmptyState title={empty} />;
   return (
     <div className="overflow-x-auto">
       <table className="table">
         <thead>
           <tr>
+            {selectName && <th className="w-8"><span className="sr-only">Select</span></th>}
             <th>Reference</th><th>Programme</th>{showDept && <th>Department</th>}<th>Session</th>
             <th className="text-right">Graduands</th><th>Status</th><th>Since</th>
           </tr>
@@ -23,6 +30,12 @@ export function SheetTable({ rows, empty, showDept = true }: { rows: SheetRow[];
             const days = daysSince(r.statusSince);
             return (
               <tr key={r.id} className="hover:bg-slate-50">
+                {selectName && (
+                  <td>
+                    <input type="checkbox" name={selectName} value={r.id} aria-label={`Select ${r.reference}`} className="h-4 w-4 accent-brand"
+                      checked={selected ? selected.has(r.id) : undefined} onChange={onSelect ? (e) => onSelect(r.id, e.target.checked) : undefined} />
+                  </td>
+                )}
                 <td>
                   <Link href={`/sheets/${r.id}`} className="link font-mono text-xs">{r.reference}</Link>
                   <div className="mt-1 flex gap-1">
