@@ -11,7 +11,7 @@ import { apiLimiter } from './ratelimit';
 import type { ActionState } from './action-state';
 
 /** Error body used by every /api/v1 endpoint. */
-export type ApiError = { error: { message: string; status: number; errors?: unknown; warnings?: string[] } };
+export type ApiError = { error: { message: string; status: number; errors?: unknown; warnings?: string[]; choices?: unknown } };
 
 export const json = (data: unknown, status = 200, headers: Record<string, string> = {}) =>
   Response.json(data, { status, headers: { 'cache-control': 'no-store', ...headers } });

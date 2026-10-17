@@ -1,7 +1,7 @@
 import 'server-only';
 import * as XLSX from 'xlsx';
 import { Types } from 'mongoose';
-import { Department, Faculty, Programme } from '@/models';
+import { Department, Faculty, GraduandRecord, Programme, Student } from '@/models';
 import { DEGREE_TYPES } from '@/models/Programme';
 import { GraduandRowSchema, type GraduandRow } from './validators';
 import type { CellError } from './action-state';
@@ -174,12 +174,22 @@ function degreeOf(text: string) {
 
 export type BoardTarget = { departmentId: Types.ObjectId; programmeId: Types.ObjectId; programmeName: string; degreeType: string };
 
+/** A row whose department has several programmes of its degree type: the person importing picks one. */
+export type ProgrammeChoice = {
+  line: number; matricNo: string; name: string; group: string; department: string; degreeType: string;
+  options: { id: string; name: string }[];
+  /** Set when the programme was already picked on screen (kept so the choice stays visible). */
+  selected?: string;
+};
+
 /**
  * Matches each row's department (by name, using the faculty when two departments share a name)
- * and its programme (the department's only programme of that degree type, or the one named
- * like the area of specialization). Unknown or ambiguous ones are listed once each.
+ * and its programme: the department's only programme of that degree type, or else (in order)
+ * the programme picked on screen for that row, the programme the student already has a record
+ * for, or the one named like the area of specialization. Rows still undecided are returned as
+ * `choices` for the person importing to pick; unknown departments and programmes are errors.
  */
-export async function resolveBoardRows(rows: BoardRow[], allowedDepartments: Types.ObjectId[] | null) {
+export async function resolveBoardRows(rows: BoardRow[], allowedDepartments: Types.ObjectId[] | null, picked: Map<number, string> = new Map()) {
   const errors: CellError[] = [];
   const [faculties, departments, programmes] = await Promise.all([
     Faculty.find().lean(),
@@ -190,7 +200,13 @@ export async function resolveBoardRows(rows: BoardRow[], allowedDepartments: Typ
   const byKey = new Map<string, typeof departments>();
   for (const d of departments) for (const k of [nameKey(d.name), d.code.toUpperCase()]) byKey.set(k, [...(byKey.get(k) ?? []), d]);
 
+  // Programmes students already have records for, to settle re-imports without asking again.
+  const students = await Student.find({ matricNo: { $in: rows.map((r) => r.row.matricNo) } }).select('matricNo').lean();
+  const studentOf = new Map(students.map((s) => [s.matricNo, s._id]));
+  const records = await GraduandRecord.find({ student: { $in: students.map((s) => s._id) } }).select('student programme').lean();
+
   const targets = new Map<number, BoardTarget>();
+  const choices: ProgrammeChoice[] = [];
   const reported = new Set<string>();
   const once = (key: string, e: CellError) => { if (!reported.has(key)) { reported.add(key); errors.push(e); } };
 
@@ -213,22 +229,34 @@ export async function resolveBoardRows(rows: BoardRow[], allowedDepartments: Typ
       once(`g:${r.degreeText}`, { sheet: 'Board list', row: r.line, column: 'PROG.', message: `Unknown programme type "${r.degreeText}"; use ${DEGREE_TYPES.join(', ')}` });
       continue;
     }
-    let progs = programmes.filter((p) => p.department.equals(dept._id) && p.degreeType === degree);
-    const spec = r.row.remarks?.replace(/^Area of specialization:\s*/, '');
-    if (progs.length > 1 && spec) {
-      const named = progs.filter((p) => nameKey(p.name).includes(nameKey(spec)));
-      if (named.length === 1) progs = named;
-    }
-    if (progs.length !== 1) {
+    const progs = programmes.filter((p) => p.department.equals(dept._id) && p.degreeType === degree);
+    if (!progs.length) {
       once(`p:${dept.code}:${degree}`, {
         sheet: 'Board list', row: r.line, column: 'PROG.',
-        message: progs.length
-          ? `${dept.name} has several ${degree} programmes (${progs.map((p) => p.name).join(', ')}); fill AREA OF SPECIALIZATION with the programme name`
-          : `${dept.name} has no ${degree} programme yet; add it in Academic structure (Bulk add works too)`,
+        message: `${dept.name} has no ${degree} programme yet; add it in Academic structure (Bulk add works too)`,
       });
       continue;
     }
-    targets.set(r.line, { departmentId: dept._id, programmeId: progs[0]._id, programmeName: progs[0].name, degreeType: degree });
+    let prog = progs.length === 1 ? progs[0] : undefined;
+    const pick = progs.length > 1 ? picked.get(r.line) : undefined;
+    if (!prog) {
+      const sid = studentOf.get(r.row.matricNo);
+      const spec = r.row.remarks?.replace(/^Area of specialization:\s*/, '');
+      const named = spec ? progs.filter((p) => nameKey(p.name).includes(nameKey(spec))) : [];
+      prog = (pick && progs.find((p) => String(p._id) === pick))
+        || (sid && progs.find((p) => records.some((x) => x.student.equals(sid) && x.programme.equals(p._id))))
+        || (named.length === 1 ? named[0] : undefined);
+    }
+    if (!prog || (pick && String(prog._id) === pick)) {
+      choices.push({
+        line: r.line, matricNo: r.row.matricNo, name: `${r.row.surname}, ${r.row.otherNames}`,
+        group: `${dept.code}|${degree}`, department: dept.name, degreeType: degree,
+        options: progs.map((p) => ({ id: String(p._id), name: p.name })),
+        selected: prog ? String(prog._id) : undefined,
+      });
+      if (!prog) continue;
+    }
+    targets.set(r.line, { departmentId: dept._id, programmeId: prog._id, programmeName: prog.name, degreeType: degree });
   }
-  return { targets, errors };
+  return { targets, errors, choices };
 }
