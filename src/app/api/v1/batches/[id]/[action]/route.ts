@@ -21,7 +21,8 @@ export const PUT = v1(async (req: Request, ctx: RouteCtx) => {
 
 /**
  * POST /batches/{id}/board-list  multipart: file (.xlsx, .xls or .csv), session (id), mode=check|import,
- *   programme_<row>=<programme id> for rows whose department has several programmes of that type.
+ *   addMissing=true to add departments and programmes not yet in Academic structure (structure:extend),
+ *   programme_<uid>=<programme id> for rows whose department has several programmes of that type.
  * Imports a PG Board result list: one legacy sheet per programme, filled with its graduands.
  * When programmes must be chosen, the 422 response lists them in error.choices.
  */
@@ -38,6 +39,7 @@ export const POST = v1(async (req: Request, ctx: RouteCtx) => {
   fd.append('session', String(form?.get('session') ?? ''));
   const mode = form?.get('mode') === 'check' ? 'check' : 'import';
   fd.append('mode', mode);
+  if (form?.get('addMissing') === 'true' || form?.get('addMissing') === 'on') fd.append('addMissing', 'on');
   for (const [k, v] of form!) if (/^programme_\d+$/.test(k) && typeof v === 'string') fd.append(k, v);
   const res = await importBoardList(id, {}, fd);
   if (!res.ok && res.data?.choices) {

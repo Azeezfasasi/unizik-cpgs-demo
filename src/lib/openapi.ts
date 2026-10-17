@@ -122,10 +122,10 @@ const named = obj({ id: id(), name: str(), code: str() });
 const schemas: Json = {
   Error: obj({ error: obj({
     message: str(), status: int(), errors: arr(ref('CellError')), warnings: arr(str()),
-    choices: { ...arr(ref('ProgrammeChoice')), description: 'PG Board list import only: graduands whose programme must be chosen (send programme_<line>)' },
+    choices: { ...arr(ref('ProgrammeChoice')), description: 'PG Board list import only: graduands whose programme must be chosen (send programme_<uid>)' },
   }, ['message', 'status']) }, ['error']),
   ProgrammeChoice: obj({
-    line: int('Spreadsheet row'), matricNo: str(), name: str(), group: str('Department code | degree type'), department: str(), degreeType: str(),
+    uid: int('Row key to send back as programme_<uid>'), sheet: str('Sheet (tab) name'), line: int('Row on that sheet'), matricNo: str(), name: str(), group: str('Department code | degree type'), department: str(), degreeType: str(),
     options: arr(obj({ id: id(), name: str() })), selected: str('Programme already picked, if any'),
   }),
   CellError: obj({ sheet: str('Sheet name in the workbook, or CSV'), row: int('Row number as shown in Excel'), column: str(), message: str() }),
@@ -447,19 +447,20 @@ const paths: Json = {
   '/batches/{id}': { get: op('Digitization boxes', 'Get a box with its sheets', 'as for listing', { parameters: [pathId('id', 'Box id')], responses: { 200: ok('Box', dataOf({ allOf: [ref('Batch'), obj({ sheets: arr(ref('SheetSummary')) })] }), { data: { ...exBatch, sheets: [{ ...exSheetRow, origin: 'LEGACY', status: 'INDEXED', boxCode: 'CRR-BOX-0042' }] } }), ...errs(401, 403, 404, 429) } }) },
   '/batches/{id}/assignments': { put: op('Digitization boxes', 'Assign indexer and QA reviewer', 'Taskforce Lead, Head of Records, System Administrator', { description: 'The indexer must hold the Indexer or Taskforce Lead role; the reviewer QA Reviewer or Head of Records. They must be different people.', parameters: [pathId('id', 'Box id')], requestBody: jsonBody(obj({ indexer: nullable(id()), reviewer: nullable(id()) }), { indexer: '6acd40af9c18c073359430d2', reviewer: '6acd40af9c18c073359430d3' }), responses: { 200: actionOk(undefined, { message: 'Assignments saved.' }), ...errs(401, 403, 404, 422, 429) } }) },
   '/batches/{id}/board-list': { post: op('Digitization boxes', 'Import a PG Board result list', 'Taskforce Lead; Indexer assigned to the box', {
-    description: 'Upload the board list as kept by CPGS (title rows, then S/N, NAME/REG. NO., FACULTY, DEPARTMENT, PROG., 1ST–4TH SEM., PROJECT, FCGPA, EFFECTIVE DATE OF GRADUATION, AREA OF SPECIALIZATION; repeated header rows are fine). One legacy sheet per programme and session is created in the box, or an existing one still being indexed is reused. Departments are matched by name within the box departments, programmes by degree type; the board meeting number is read from the title. When a department has several programmes of a type, the programme comes from a programme_<row> field, the programme the student already has a record for, or the area of specialization; otherwise the response is 422 with error.choices listing the rows and their options, to send back as programme_<row> fields. Every row is checked first and nothing is saved unless all pass. mode=check only reports what would happen.',
+    description: 'Upload the board list as kept by CPGS (title rows, then S/N, NAME/REG. NO., FACULTY, DEPARTMENT, PROG., 1ST–4TH SEM., PROJECT, FCGPA, EFFECTIVE DATE OF GRADUATION, AREA OF SPECIALIZATION; repeated header rows are fine). One legacy sheet per programme and session is created in the box, or an existing one still being indexed is reused. Departments are matched by name within the box departments, programmes by degree type; the board meeting number is read from the title. When a department has several programmes of a type, the programme comes from a programme_<uid> field, the programme the student already has a record for, or the area of specialization; otherwise the response is 422 with error.choices listing the rows and their options, to send back as programme_<uid> fields. With addMissing=true, departments and programmes not in Academic structure are added from the list (faculties matched by name; codes generated). Every sheet (tab) with a header row is read; graduands repeated on several sheets with the same result are imported once. Every row is checked first and nothing is saved unless all pass. mode=check only reports what would happen.',
     parameters: [pathId('id', 'Box id')],
     requestBody: multipartBody(obj({
       file: str('PG Board result list (.xlsx, .xls or .csv)', { format: 'binary' }),
       session: id('Session of the final defence (a SESSION column overrides it per row)'),
       mode: str('check: validate and report only; import (default): save', { enum: ['check', 'import'] }),
-      'programme_<row>': id('Programme for the graduand on that spreadsheet row (from error.choices), e.g. programme_5'),
+      addMissing: bool('Add departments and programmes not yet in Academic structure, from FACULTY, DEPARTMENT and PROG. (Taskforce Lead, Head of Records, System Administrator). Existing items are never changed.'),
+      'programme_<uid>': id('Programme for that graduand (uid from error.choices), e.g. programme_5'),
     }, ['file', 'session']), 'The board list'),
     responses: {
       201: actionOk(undefined, { message: 'Imported 38 graduands (58th PG Board meeting) into 21 sheet(s) (21 new): CPGS/RS/2026/000101, CPGS/RS/2026/000102' }),
       200: actionOk(undefined, { message: 'Check passed (58th PG Board meeting): 38 graduands in 21 programme sheet(s), 21 new. Nothing was saved yet.' }),
       400: { description: 'No file in the multipart body' },
-      422: { description: 'Rows with problems (error.errors) and/or graduands whose programme must be chosen (error.choices)', content: { 'application/json': { schema: ref('Error'), example: { error: { message: 'Choose the programme for 2 graduands below. Nothing was saved yet; after choosing, press Check only or Import again.', status: 422, choices: [{ line: 5, matricNo: '2009397001P', name: 'ORAEGBUNAM, Kenneth Ikenga Emeka', group: 'MLS|MSc', department: 'Medical Laboratory Science', degreeType: 'MSc', options: [{ id: '6acd40af9c18c073359430e7', name: 'M.Sc. Immunology' }, { id: '6acd40af9c18c073359430e8', name: 'M.Sc. Haematology' }] }] } } } } },
+      422: { description: 'Rows with problems (error.errors) and/or graduands whose programme must be chosen (error.choices)', content: { 'application/json': { schema: ref('Error'), example: { error: { message: 'Choose the programme for 2 graduands below. Nothing was saved yet; after choosing, press Check only or Import again.', status: 422, choices: [{ uid: 5, sheet: '96TH BOARD', line: 5, matricNo: '2009397001P', name: 'ORAEGBUNAM, Kenneth Ikenga Emeka', group: 'MLS|MSc', department: 'Medical Laboratory Science', degreeType: 'MSc', options: [{ id: '6acd40af9c18c073359430e7', name: 'M.Sc. Immunology' }, { id: '6acd40af9c18c073359430e8', name: 'M.Sc. Haematology' }] }] } } } } },
       ...errs(401, 403, 404, 429),
     },
   }) },

@@ -20,6 +20,8 @@ export const ROLE_LABELS: Record<Role, string> = {
 export const PERMISSIONS = {
   'user:manage':        ['SUPER_ADMIN'],
   'structure:manage':   ['SUPER_ADMIN'],
+  /** Add (never change) departments and programmes found in PG Board lists during import. */
+  'structure:extend':   ['SUPER_ADMIN', 'HEAD_RECORDS', 'TASKFORCE_LEAD'],
   'record:read':        ['SUPER_ADMIN', 'PROVOST', 'HEAD_RECORDS', 'TASKFORCE_LEAD', 'AUDITOR', 'DEPT_OFFICER', 'HOD', 'FACULTY_PG'],
   'record:read:all':    ['SUPER_ADMIN', 'PROVOST', 'HEAD_RECORDS', 'TASKFORCE_LEAD', 'AUDITOR'],
   'record:export':      ['SUPER_ADMIN', 'PROVOST', 'HEAD_RECORDS'],
