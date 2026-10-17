@@ -1,5 +1,5 @@
 import { cronAuthorized } from '@/lib/cron';
-import { verifyAuditChain, audit } from '@/lib/audit';
+import { verifyAuditChain, audit, describeChainBreak } from '@/lib/audit';
 import { sendMail } from '@/lib/mail';
 import { User } from '@/models';
 
@@ -14,7 +14,7 @@ export async function GET(req: Request) {
     await sendMail({
       to: to.map((u) => ({ email: u.email, name: u.name })),
       subject: 'URGENT: CPGS audit log integrity check failed',
-      html: `<p>The nightly check found the audit hash chain broken at entry <b>#${r.brokenAt}</b> after ${r.checked} valid entries.</p><p>This indicates an audit entry was altered or removed. Preserve the database state and begin the breach procedure.</p>`,
+      html: `<p>The nightly check of the audit hash chain failed. ${describeChainBreak(r)}</p><p>This indicates audit entries were altered or removed. Preserve the database state and begin the breach procedure.</p>`,
     });
   }
   await audit(null, 'cron.verify_audit', 'AuditLog', undefined, undefined, r);
