@@ -20,8 +20,10 @@ export const PUT = v1(async (req: Request, ctx: RouteCtx) => {
 });
 
 /**
- * POST /batches/{id}/board-list  multipart: file (.xlsx, .xls or .csv), session (id), mode=check|import
+ * POST /batches/{id}/board-list  multipart: file (.xlsx, .xls or .csv), session (id), mode=check|import,
+ *   programme_<row>=<programme id> for rows whose department has several programmes of that type.
  * Imports a PG Board result list: one legacy sheet per programme, filled with its graduands.
+ * When programmes must be chosen, the 422 response lists them in error.choices.
  */
 export const POST = v1(async (req: Request, ctx: RouteCtx) => {
   await requirePermission('legacy:upload');
@@ -36,6 +38,10 @@ export const POST = v1(async (req: Request, ctx: RouteCtx) => {
   fd.append('session', String(form?.get('session') ?? ''));
   const mode = form?.get('mode') === 'check' ? 'check' : 'import';
   fd.append('mode', mode);
+  for (const [k, v] of form!) if (/^programme_\d+$/.test(k) && typeof v === 'string') fd.append(k, v);
   const res = await importBoardList(id, {}, fd);
+  if (!res.ok && res.data?.choices) {
+    return apiError(422, res.message ?? 'Choose programmes', { errors: res.errors, choices: JSON.parse(res.data.choices) });
+  }
   return fromAction(res, mode === 'import' && res.ok ? 201 : 200);
 });

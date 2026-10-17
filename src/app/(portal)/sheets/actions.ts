@@ -362,10 +362,30 @@ export async function importBoardList(batchId: string, _: ActionState, fd: FormD
       if (s) sessionOf.set(r.line, s);
       else errors.push({ sheet: 'Board list', row: r.line, column: 'SESSION', message: `Unknown session "${r.sessionText}"` });
     }
-    const resolved = await resolveBoardRows(parsed.rows, boxDepartmentIds(b!));
+    // Programmes picked on screen for rows whose department has several of that type (field programme_<row>).
+    const picked = new Map<number, string>();
+    for (const [k, v] of fd) {
+      const m = k.match(/^programme_(\d+)$/);
+      if (m && typeof v === 'string' && v) picked.set(Number(m[1]), v);
+    }
+    const resolved = await resolveBoardRows(parsed.rows, boxDepartmentIds(b!), picked);
     errors.push(...resolved.errors);
     errors.sort((x, y) => x.row - y.row);
-    if (errors.length) return { ok: false, message: `${errors.length} problem(s) found. Nothing was saved.`, errors };
+    // Choices already made stay on screen (pre-selected) so Import can follow Check only.
+    const asks = resolved.choices.filter((c) => !c.selected).length;
+    const choiceData = resolved.choices.length ? { choices: JSON.stringify(resolved.choices) } : undefined;
+    if (errors.length || asks) {
+      const parts = [
+        errors.length ? `${errors.length} problem(s) found` : '',
+        asks ? `choose the programme for ${asks} graduand${asks === 1 ? '' : 's'} below` : '',
+      ].filter(Boolean).join(', and ');
+      return {
+        ok: false,
+        message: `${parts.charAt(0).toUpperCase()}${parts.slice(1)}. Nothing was saved yet${asks ? '; after choosing, press Check only or Import again' : ''}.`,
+        errors: errors.length ? errors : undefined,
+        data: choiceData,
+      };
+    }
 
     // One sheet per programme and session: reuse this box's sheet if it is still being indexed.
     type Group = {
@@ -400,7 +420,7 @@ export async function importBoardList(batchId: string, _: ActionState, fd: FormD
         c.warnings.forEach((w) => warnings.push(`Row ${r.line} (${r.row.matricNo}): ${w}`));
       }
     }
-    if (errors.length) return { ok: false, message: `${errors.length} problem(s) found. Nothing was saved.`, errors, warnings };
+    if (errors.length) return { ok: false, message: `${errors.length} problem(s) found. Nothing was saved.`, errors, warnings, data: choiceData };
 
     const list = [...groups.values()].sort((a, c) => a.programmeName.localeCompare(c.programmeName));
     const newSheets = list.filter((g) => !g.sheet).length;
@@ -411,6 +431,7 @@ export async function importBoardList(batchId: string, _: ActionState, fd: FormD
         ok: true,
         message: `Check passed${meeting}: ${parsed.rows.length} graduands in ${list.length} programme sheet(s), ${newSheets} new. ${summary}. Nothing was saved yet.`,
         warnings,
+        data: choiceData,
       };
     }
 

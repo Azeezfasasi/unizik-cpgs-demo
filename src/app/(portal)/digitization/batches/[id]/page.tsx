@@ -16,6 +16,7 @@ import { ActionForm, SubmitButton } from '@/components/forms';
 import { PrintButton } from '@/components/PrintButton';
 import { assignBatch, setBatchStatus } from '../../actions';
 import { createLegacySheet, importBoardList } from '../../../sheets/actions';
+import { BoardImportForm } from './BoardImportForm';
 
 export const metadata: Metadata = { title: 'Box' };
 
@@ -110,35 +111,11 @@ async function BatchPageContent({ params }: PageProps<'/digitization/batches/[id
                 semester GPAs, PROJECT, FCGPA, EFFECTIVE DATE OF GRADUATION, AREA OF SPECIALIZATION). One result sheet is
                 made for each programme in it, and the board meeting number is read from the title.
               </p>
-              <ActionForm action={importBoardList.bind(null, id)} className="space-y-3">
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div>
-                    <label className="label" htmlFor="board-file">Board list (.xlsx, .xls or .csv)</label>
-                    <input id="board-file" name="file" type="file" required accept=".xlsx,.xls,.csv" className="input" />
-                  </div>
-                  <div>
-                    <label className="label" htmlFor="board-session">Session of the final defence</label>
-                    <select id="board-session" name="session" required className="input">
-                      <optgroup label="Sessions in this box">
-                        {sessions.map((s) => <option key={s._id.toString()} value={s._id.toString()}>{s.label}</option>)}
-                      </optgroup>
-                      {otherSessions.length > 0 && (
-                        <optgroup label="Other sessions">
-                          {otherSessions.map((s) => <option key={s._id.toString()} value={s._id.toString()}>{s.label}</option>)}
-                        </optgroup>
-                      )}
-                    </select>
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <SubmitButton name="mode" value="check" className="btn-outline" pendingText="Checking…">Check only</SubmitButton>
-                  <SubmitButton name="mode" value="import" pendingText="Importing…">Import</SubmitButton>
-                </div>
-                <p className="text-xs text-muted">
-                  Departments are matched by name and programmes by type (PHD, MSC, LLM…). Every row is checked first;
-                  if anything does not match, nothing is saved and the rows are listed. A SESSION column, if present, overrides the session above.
-                </p>
-              </ActionForm>
+              <BoardImportForm
+                action={importBoardList.bind(null, id)}
+                boxSessions={sessions.map((s) => ({ id: s._id.toString(), label: s.label }))}
+                otherSessions={otherSessions.map((s) => ({ id: s._id.toString(), label: s.label }))}
+              />
             </Card>
           )}
 
