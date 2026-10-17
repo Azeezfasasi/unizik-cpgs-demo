@@ -44,13 +44,14 @@ export function buildStructureFile(format: 'xlsx' | 'csv', rows?: string[][]) {
     [],
     ['How it works'],
     ['One row per programme, with its department and faculty on the same row. A row can stop after the department (or faculty) to add just that.'],
-    ['Faculties, departments and programmes are matched by their code. Existing ones are reused and never changed; only new ones are added.'],
-    ['Nothing is saved unless every row is valid. Use "Check only" first to see what would be added.'],
+    ['Faculties and departments are matched by code, programmes by department + name + degree type. Existing ones are reused and never changed; only new ones are added.'],
+    ['Nothing is saved unless every row is valid. Use "Check only" first to see what would be added. Differences from what already exists are shown as warnings.'],
     [],
     ['Column', 'Rule'],
     ['Faculty / Faculty Code', 'Required on every row. Code 2–10 characters, e.g. AGR.'],
     ['Department / Department Code', 'Give both or neither. Code 2–10 characters, unique across the university, e.g. AEX.'],
-    ['Programme / Programme Code', 'Give both or neither; needs a department. Code 2–20 characters, unique, e.g. MSC-AEX.'],
+    ['Programme', 'Optional; needs a department on the same row. A programme is recognised by its department, name and degree type.'],
+    ['Programme Code', 'Optional. Leave it blank, or reuse one code (e.g. the department code) for several programmes: a unique code such as MSC-AEX or PHD-AEX is generated.'],
     ['Degree Type', `Required with a programme: ${DEGREE_TYPES.join(', ')} (M.Sc., LL.M., Ph.D. also accepted).`],
     ['Matric Pattern', 'Optional regular expression for the department\'s matric numbers, e.g. ^20\\d{8}$.'],
     [],
@@ -137,8 +138,8 @@ export function parseStructureFile(buf: ArrayBuffer, fileName: string): { rows: 
     const dt = dtRaw ? degreeType(dtRaw) : null;
     if (hasProg) {
       if (!hasDept) err('Department', 'A programme needs its department on the same row');
-      if (pName.length < 3) err('Programme', 'Programme name is required with its code (at least 3 characters)');
-      if (pCode.length < 2 || pCode.length > 20) err('Programme Code', 'Programme code must be 2–20 characters');
+      if (pName.length < 3) err('Programme', 'Programme name is required (at least 3 characters)');
+      if (pCode && (pCode.length < 2 || pCode.length > 20)) err('Programme Code', 'Programme code must be 2–20 characters, or leave it blank to generate one');
       if (!dt) err('Degree Type', `Degree type must be one of ${DEGREE_TYPES.join(', ')}`);
     }
     if (errors.length > before) return;
@@ -158,36 +159,63 @@ export type StructurePlan = {
   departments: { name: string; code: string; facultyCode: string; matricPattern?: string }[];
   programmes: { name: string; code: string; degreeType: DegreeType; departmentCode: string }[];
   existing: { faculties: number; departments: number; programmes: number };
+  /** Programme codes the import made up because the cell was blank or the code was already taken. */
+  generatedCodes: { line: number; name: string; given: string; code: string }[];
 };
 
+/** "MSc" + "REE" → "MSC-REE"; keeps a base that already starts with the degree prefix. */
+function programmeCode(degree: DegreeType, base: string, used: Set<string>) {
+  const prefix = degree.toUpperCase();
+  const stem = (base.startsWith(`${prefix}-`) ? base : `${prefix}-${base}`).slice(0, 17);
+  let code = stem;
+  for (let n = 2; used.has(code); n++) code = `${stem}-${n}`;
+  return code;
+}
+
 /**
- * Works out what is new against the database and checks the rows agree with it and with each
- * other (a code always means the same thing). Name differences on existing items are warnings.
+ * Works out what is new against the database. Codes identify faculties and departments; a
+ * programme is identified by its department, name and degree type, so its code only has to be
+ * unique, and one is generated when the cell is blank or the code is already taken. Differences
+ * from what already exists are warnings: existing items always win and are never changed.
  */
 export async function planStructureImport(rows: Row[]) {
   const errors: CellError[] = [];
   const warnings: string[] = [];
   const [faculties, departments, programmes] = await Promise.all([
-    Faculty.find().lean(), Department.find().populate<{ faculty: { code: string } }>('faculty', 'code').lean(), Programme.find().populate<{ department: { code: string } }>('department', 'code').lean(),
+    Faculty.find().lean(),
+    Department.find().populate<{ faculty: { code: string } }>('faculty', 'code').lean(),
+    Programme.find().populate<{ department: { code: string } }>('department', 'code').lean(),
   ]);
   const facBy = new Map(faculties.map((f) => [f.code, f]));
   const depBy = new Map(departments.map((d) => [d.code, d]));
-  const progBy = new Map(programmes.map((p) => [p.code, p]));
+  const progKey = (dept: string, name: string, degree: string) => `${dept}|${name.trim().toLowerCase()}|${degree}`;
+  const progBy = new Map(programmes.map((p) => [progKey(p.department.code, p.name, p.degreeType), p]));
+  const usedCodes = new Set(programmes.map((p) => p.code));
 
-  const plan: StructurePlan = { faculties: [], departments: [], programmes: [], existing: { faculties: 0, departments: 0, programmes: 0 } };
+  const plan: StructurePlan = { faculties: [], departments: [], programmes: [], existing: { faculties: 0, departments: 0, programmes: 0 }, generatedCodes: [] };
   const seenF = new Map<string, { name: string; line: number }>();
   const seenD = new Map<string, { name: string; facultyCode: string; line: number }>();
-  const seenP = new Map<string, { line: number; departmentCode: string; name: string; degreeType: string }>();
-  const counted = new Set<string>();
-  const warn = (key: string, msg: string) => { if (!counted.has(key)) { counted.add(key); warnings.push(msg); } };
-  const err = (line: number, column: string, message: string) => errors.push({ sheet: 'Structure', row: line, column, message });
+  const seenP = new Map<string, number>();
+  const once = new Set<string>();
+  // A programme code given to more than one programme in the file is treated as a shared base
+  // (often the department code), so every one of those programmes gets its own generated code.
+  const keysByCode = new Map<string, Set<string>>();
+  for (const r of rows) {
+    if (!r.programme?.code || !r.department) continue;
+    const set = keysByCode.get(r.programme.code) ?? new Set<string>();
+    set.add(progKey(r.department.code, r.programme.name, r.programme.degreeType));
+    keysByCode.set(r.programme.code, set);
+  }
+  const sharedCodes = new Set([...keysByCode].filter(([, keys]) => keys.size > 1).map(([code]) => code));
+  const warn = (key: string, msg: string) => { if (!once.has(key)) { once.add(key); warnings.push(msg); } };
 
   for (const r of rows) {
-    // Faculty
+    // Faculty: the code is its identity; the first name given (or the existing one) is kept.
     const f = r.faculty;
     const prevF = seenF.get(f.code);
-    if (prevF && prevF.name.toLowerCase() !== f.name.toLowerCase()) err(r.line, 'Faculty', `Code ${f.code} is "${prevF.name}" on row ${prevF.line}`);
-    if (!prevF) {
+    if (prevF) {
+      if (prevF.name.toLowerCase() !== f.name.toLowerCase()) warn(`fn:${f.code}`, `Faculty ${f.code} has more than one name in the file; used "${prevF.name}" (row ${prevF.line})`);
+    } else {
       seenF.set(f.code, { name: f.name, line: r.line });
       const ex = facBy.get(f.code);
       if (ex) {
@@ -196,43 +224,45 @@ export async function planStructureImport(rows: Row[]) {
       } else plan.faculties.push(f);
     }
 
-    // Department
+    // Department: likewise identified by code; it stays under the faculty it was first given.
     const d = r.department;
     if (!d) continue;
     const prevD = seenD.get(d.code);
+    let deptFaculty = f.code;
     if (prevD) {
-      if (prevD.name.toLowerCase() !== d.name.toLowerCase()) err(r.line, 'Department', `Code ${d.code} is "${prevD.name}" on row ${prevD.line}`);
-      if (prevD.facultyCode !== f.code) err(r.line, 'Faculty Code', `Department ${d.code} is under ${prevD.facultyCode} on row ${prevD.line}`);
+      deptFaculty = prevD.facultyCode;
+      if (prevD.name.toLowerCase() !== d.name.toLowerCase()) warn(`dn:${d.code}`, `Department ${d.code} has more than one name in the file; used "${prevD.name}" (row ${prevD.line})`);
+      if (prevD.facultyCode !== f.code) warn(`df:${d.code}`, `Department ${d.code} is listed under ${prevD.facultyCode} and ${f.code}; kept it under ${prevD.facultyCode}`);
     } else {
-      seenD.set(d.code, { name: d.name, facultyCode: f.code, line: r.line });
       const ex = depBy.get(d.code);
       if (ex) {
+        deptFaculty = ex.faculty.code;
         plan.existing.departments++;
-        if (ex.faculty.code !== f.code) err(r.line, 'Faculty Code', `Department ${d.code} already exists under faculty ${ex.faculty.code}`);
+        if (ex.faculty.code !== f.code) warn(`df:${d.code}`, `Department ${d.code} already exists under faculty ${ex.faculty.code}; its programmes were added there`);
         else if (ex.name.toLowerCase() !== d.name.toLowerCase()) warn(`d:${d.code}`, `Department ${d.code} already exists as "${ex.name}"; kept that name`);
         if (d.matricPattern && d.matricPattern !== (ex.matricPattern ?? '')) warn(`dp:${d.code}`, `Department ${d.code} already exists; its matric pattern was not changed`);
       } else plan.departments.push({ ...d, facultyCode: f.code });
+      seenD.set(d.code, { name: d.name, facultyCode: deptFaculty, line: r.line });
     }
 
-    // Programme
+    // Programme: identified by department + name + degree; the code just has to be unique.
     const p = r.programme;
     if (!p) continue;
-    const prevP = seenP.get(p.code);
-    if (prevP) {
-      if (prevP.departmentCode !== d.code || prevP.name.toLowerCase() !== p.name.toLowerCase() || prevP.degreeType !== p.degreeType) {
-        err(r.line, 'Programme Code', `Code ${p.code} is already used on row ${prevP.line}`);
-      } else warn(`pp:${p.code}`, `Programme ${p.code} is listed more than once; added once`);
-      continue;
+    const key = progKey(d.code, p.name, p.degreeType);
+    if (seenP.has(key)) { warn(`pp:${key}`, `"${p.name}" (${p.degreeType}) in ${d.code} is listed more than once; added once`); continue; }
+    seenP.set(key, r.line);
+    if (progBy.has(key)) { plan.existing.programmes++; continue; }
+    let code = p.code;
+    if (!code || usedCodes.has(code) || sharedCodes.has(code)) {
+      code = programmeCode(p.degreeType, p.code || d.code, usedCodes);
+      plan.generatedCodes.push({ line: r.line, name: p.name, given: p.code, code });
     }
-    seenP.set(p.code, { line: r.line, departmentCode: d.code, name: p.name, degreeType: p.degreeType });
-    const ex = progBy.get(p.code);
-    if (ex) {
-      plan.existing.programmes++;
-      if (ex.department.code !== d.code) err(r.line, 'Programme Code', `Programme ${p.code} already exists under department ${ex.department.code}`);
-      else if (ex.name.toLowerCase() !== p.name.toLowerCase() || ex.degreeType !== p.degreeType) {
-        warn(`p:${p.code}`, `Programme ${p.code} already exists as "${ex.name}" (${ex.degreeType}); left unchanged`);
-      }
-    } else plan.programmes.push({ ...p, departmentCode: d.code });
+    usedCodes.add(code);
+    plan.programmes.push({ name: p.name, code, degreeType: p.degreeType, departmentCode: d.code });
+  }
+  if (plan.generatedCodes.length) {
+    const sample = plan.generatedCodes.slice(0, 4).map((g) => `${g.given ? `${g.given} → ` : ''}${g.code}`).join(', ');
+    warnings.push(`Programme codes were generated for ${plan.generatedCodes.length} programme${plan.generatedCodes.length === 1 ? '' : 's'} because the code was blank or already used (e.g. ${sample}). Download "Current structure" after importing to see them all.`);
   }
   return { plan, errors, warnings };
 }

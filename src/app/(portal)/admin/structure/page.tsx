@@ -59,7 +59,11 @@ async function StructurePageContent() {
           <div className="space-y-3 text-sm">
             <p>
               Fill one row per programme with its department and faculty on the same row. A row can stop after the
-              department or faculty to add just that. Existing items are matched by code and left unchanged; only new ones are added.
+              department or faculty to add just that. Existing items are left unchanged; only new ones are added.
+            </p>
+            <p>
+              <b>Programme codes are optional.</b> Leave them blank, or use the department code for all its programmes,
+              and unique codes such as MSC-AEX and PHD-AEX are generated for you.
             </p>
             <div className="flex flex-wrap gap-2">
               <a href="/api/templates/structure" className="btn-outline py-1.5 text-xs">Template (Excel)</a>
