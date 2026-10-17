@@ -89,7 +89,7 @@ const exSheet = {
   files: [exFile], graduands: [{ ...exRecord, history: undefined, sheet: '6acd40af9c18c073359430c1' }], createdAt: NOW, updatedAt: NOW,
 };
 const exBatch = {
-  id: ID, boxCode: 'CRR-BOX-0042', department: { id: '6acd40af9c18c073359430a2', name: 'Computer Science', code: 'CSC' },
+  id: ID, boxCode: 'CRR-BOX-0042', department: null, departments: [{ id: '6acd40af9c18c073359430a2', name: 'Computer Science', code: 'CSC' }], allDepartments: false,
   sessions: [{ id: '6acd40af9c18c073359430a4', label: '2015/2016' }], estimatedSheets: 12, condition: 'DAMAGED', priority: 1,
   location: 'Sealed store, shelf A1', notes: 'Rodent damage on outer folders', status: 'IN_PROGRESS',
   indexer: { id: '6acd40af9c18c073359430d2', name: 'Chidi Eze', email: 'c.eze@unizik.edu.ng' }, reviewer: { id: '6acd40af9c18c073359430d3', name: 'Ada Obi', email: 'a.obi@unizik.edu.ng' },
@@ -203,15 +203,20 @@ const schemas: Json = {
     courses: arr(obj({ code: str(), title: str(), units: int(), score: num(), grade: str(), semester: int('1–4, from the semester result sheets', { minimum: 1, maximum: 4 }) }, ['code', 'units'])),
   }, ['matricNo', 'surname', 'otherNames']),
   Batch: obj({
-    id: id(), boxCode: str(undefined, { example: 'CRR-BOX-0042' }), department: named, sessions: arr(obj({ id: id(), label: str() })),
+    id: id(), boxCode: str(undefined, { example: 'CRR-BOX-0042' }),
+    department: nullable({ ...named, description: 'Set on single-department boxes created before multi-department boxes' }),
+    departments: arr(named), allDepartments: bool('The box holds files for any department (e.g. PG Board result lists)'),
+    sessions: arr(obj({ id: id(), label: str() })),
     estimatedSheets: int(), condition: str(undefined, { enum: ['GOOD', 'FAIR', 'DAMAGED', 'SEVERELY_DAMAGED'] }), priority: int('1 = most urgent', { minimum: 1, maximum: 5 }),
     location: nullable(str()), notes: nullable(str()), status: str(undefined, { enum: ['INVENTORIED', 'IN_PROGRESS', 'COMPLETED'] }),
     indexer: nullable(obj({ id: id(), name: str(), email: str() })), reviewer: nullable(obj({ id: id(), name: str(), email: str() })), ...ts,
   }),
   BatchCreate: obj({
-    boxCode: str('Format CRR-BOX-0001', { pattern: '^CRR-BOX-\\d{4,}$' }), department: id(), sessions: arr(id()), estimatedSheets: int(undefined, { minimum: 0 }),
+    boxCode: str('Format CRR-BOX-0001', { pattern: '^CRR-BOX-\\d{4,}$' }), 
+    departments: { ...arr(id()), description: 'Departments whose files are in the box (one or more), unless allDepartments' },
+    allDepartments: bool('The box holds files for any department, e.g. PG Board result lists'), sessions: arr(id()), estimatedSheets: int(undefined, { minimum: 0 }),
     condition: str(undefined, { enum: ['GOOD', 'FAIR', 'DAMAGED', 'SEVERELY_DAMAGED'] }), priority: int(undefined, { minimum: 1, maximum: 5 }), location: str(), notes: str(),
-  }, ['boxCode', 'department', 'sessions', 'estimatedSheets', 'condition', 'priority']),
+  }, ['boxCode', 'sessions', 'estimatedSheets', 'condition', 'priority']),
   File: obj({
     id: id(), storage: str(undefined, { enum: ['cloudinary', 'local'] }), originalName: str(), format: str(undefined, { enum: ['pdf', 'jpg', 'png'] }),
     bytes: int(), pages: nullable(int()), sha256: str('SHA-256 recorded at upload'), purpose: str(undefined, { enum: PURPOSE_ENUM }),
@@ -430,10 +435,24 @@ const paths: Json = {
   // Boxes
   '/batches': {
     get: op('Digitization boxes', 'List archive boxes', 'Taskforce, Head of Records, Provost, System Administrator (Indexers and QA Reviewers see their own)', { parameters: [query('status', 'Status', str(undefined, { enum: ['INVENTORIED', 'IN_PROGRESS', 'COMPLETED'] })), query('department', 'Department', id()), ...PAGE], responses: { 200: ok('Boxes', listOf(ref('Batch')), { data: [exBatch], meta: { page: 1, limit: 25, total: 1, pages: 1 } }), ...STD } }),
-    post: op('Digitization boxes', 'Inventory a box', 'Taskforce Lead, Head of Records, System Administrator', { requestBody: jsonBody(ref('BatchCreate'), { boxCode: 'CRR-BOX-0042', department: '6acd40af9c18c073359430a2', sessions: ['6acd40af9c18c073359430a4'], estimatedSheets: 12, condition: 'DAMAGED', priority: 1, location: 'Sealed store, shelf A1', notes: 'Rodent damage on outer folders' }), responses: { 201: actionOk(ref('Batch'), { data: exBatch }), ...errs(401, 403, 422, 429) } }),
+    post: op('Digitization boxes', 'Inventory a box', 'Taskforce Lead, Head of Records, System Administrator', { requestBody: jsonBody(ref('BatchCreate'), { boxCode: 'CRR-BOX-0042', departments: ['6acd40af9c18c073359430a2'], sessions: ['6acd40af9c18c073359430a4'], estimatedSheets: 12, condition: 'DAMAGED', priority: 1, location: 'Sealed store, shelf A1', notes: 'Rodent damage on outer folders' }), responses: { 201: actionOk(ref('Batch'), { data: exBatch }), ...errs(401, 403, 422, 429) } }),
   },
   '/batches/{id}': { get: op('Digitization boxes', 'Get a box with its sheets', 'as for listing', { parameters: [pathId('id', 'Box id')], responses: { 200: ok('Box', dataOf({ allOf: [ref('Batch'), obj({ sheets: arr(ref('SheetSummary')) })] }), { data: { ...exBatch, sheets: [{ ...exSheetRow, origin: 'LEGACY', status: 'INDEXED', boxCode: 'CRR-BOX-0042' }] } }), ...errs(401, 403, 404, 429) } }) },
   '/batches/{id}/assignments': { put: op('Digitization boxes', 'Assign indexer and QA reviewer', 'Taskforce Lead, Head of Records, System Administrator', { description: 'The indexer must hold the Indexer or Taskforce Lead role; the reviewer QA Reviewer or Head of Records. They must be different people.', parameters: [pathId('id', 'Box id')], requestBody: jsonBody(obj({ indexer: nullable(id()), reviewer: nullable(id()) }), { indexer: '6acd40af9c18c073359430d2', reviewer: '6acd40af9c18c073359430d3' }), responses: { 200: actionOk(undefined, { message: 'Assignments saved.' }), ...errs(401, 403, 404, 422, 429) } }) },
+  '/batches/{id}/board-list': { post: op('Digitization boxes', 'Import a PG Board result list', 'Taskforce Lead; Indexer assigned to the box', {
+    description: 'Upload the board list as kept by CPGS (title rows, then S/N, NAME/REG. NO., FACULTY, DEPARTMENT, PROG., 1ST–4TH SEM., PROJECT, FCGPA, EFFECTIVE DATE OF GRADUATION, AREA OF SPECIALIZATION; repeated header rows are fine). One legacy sheet per programme and session is created in the box, or an existing one still being indexed is reused. Departments are matched by name within the box departments, programmes by degree type; the board meeting number is read from the title. Every row is checked first and nothing is saved unless all pass. mode=check only reports what would happen.',
+    parameters: [pathId('id', 'Box id')],
+    requestBody: multipartBody(obj({
+      file: str('PG Board result list (.xlsx, .xls or .csv)', { format: 'binary' }),
+      session: id('Session of the final defence (a SESSION column overrides it per row)'),
+      mode: str('check: validate and report only; import (default): save', { enum: ['check', 'import'] }),
+    }, ['file', 'session']), 'The board list'),
+    responses: {
+      201: actionOk(undefined, { message: 'Imported 38 graduands (58th PG Board meeting) into 21 sheet(s) (21 new): CPGS/RS/2026/000101, CPGS/RS/2026/000102' }),
+      200: actionOk(undefined, { message: 'Check passed (58th PG Board meeting): 38 graduands in 21 programme sheet(s), 21 new. Nothing was saved yet.' }),
+      400: { description: 'No file in the multipart body' }, ...errs(401, 403, 404, 422, 429),
+    },
+  }) },
   '/batches/{id}/status': { put: op('Digitization boxes', 'Change box status', 'Taskforce Lead, Head of Records, System Administrator', { description: 'COMPLETED is refused until every sheet in the box is locked.', parameters: [pathId('id', 'Box id')], requestBody: jsonBody(obj({ status: str(undefined, { enum: ['INVENTORIED', 'IN_PROGRESS', 'COMPLETED'] }) }, ['status']), { status: 'IN_PROGRESS' }), responses: { 200: actionOk(), ...errs(401, 403, 404, 422, 429) } }) },
 
   // Files

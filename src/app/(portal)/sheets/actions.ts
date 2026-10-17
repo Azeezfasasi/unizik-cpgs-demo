@@ -13,9 +13,11 @@ import { withTxn } from '@/lib/txn';
 import { FLOW, type FlowStage } from '@/lib/workflow';
 import { checkRow, notifySheet, refreshCount, snapshotRows, upsertGraduand } from '@/lib/sheets';
 import { parseTemplate } from '@/lib/template';
+import { boxDepartmentIds } from '@/lib/boxes';
+import { parseBoardList, resolveBoardRows } from '@/lib/board-list';
 import { GraduandRowSchema, objectId } from '@/lib/validators';
 import type { ActionState, CellError } from '@/lib/action-state';
-import { DigitizationBatch, GraduandRecord, Programme, ResultSheet, StoredFile, nextSheetReference } from '@/models';
+import { AcademicSession, DigitizationBatch, GraduandRecord, Programme, ResultSheet, StoredFile, nextSheetReference } from '@/models';
 import type { ResultSheetDoc } from '@/models/ResultSheet';
 
 type Sheet = ResultSheetDoc;
@@ -69,9 +71,11 @@ export async function createLegacySheet(_: ActionState, fd: FormData): Promise<A
     if (!b) missing('Box not found');
     if (user.role === 'INDEXER' && !b!.indexer?.equals(user.id)) fail('This box is not assigned to you');
     const prog = await Programme.findById(programme).lean();
-    if (!prog || !prog.department.equals(b!.department)) fail('Programme must belong to the box department');
+    if (!prog) missing('Programme not found');
+    const allowed = boxDepartmentIds(b!);
+    if (allowed && !allowed.some((d) => d.equals(prog!.department))) fail('Programme must belong to one of the box departments');
     const sheet = await ResultSheet.create({
-      origin: 'LEGACY', reference: await nextSheetReference(), department: b!.department,
+      origin: 'LEGACY', reference: await nextSheetReference(), department: prog!.department,
       programme, session, batch, status: 'DRAFT', createdBy: user.id,
     });
     if (b!.status === 'INVENTORIED') { b!.status = 'IN_PROGRESS'; await b!.save(); }
@@ -311,6 +315,124 @@ export async function importLegacyRows(sheetId: string, _: ActionState, fd: Form
       ok: true,
       message: `${rows.length} row(s) imported from ${f.name}: ${rows.length - updated} added, ${updated} updated` +
         `${illegible ? `, ${illegible} flagged illegible` : ''}. Check them against the scan, then send the sheet to QA.`,
+      warnings,
+    };
+  });
+}
+
+// ---------------------------------------------------------------- legacy: PG Board result lists
+
+/**
+ * Imports a PG Board result list into a box: one legacy sheet per programme (and session), each
+ * filled with its graduands. Every row is matched and checked first; nothing is saved unless all
+ * pass. Sheets in this box for the same programme and session that are still being indexed are
+ * reused (rows updated, none deleted). mode=check only reports what would happen.
+ */
+export async function importBoardList(batchId: string, _: ActionState, fd: FormData): Promise<ActionState> {
+  return run(async () => {
+    const user = await requirePermission('legacy:upload');
+    await db();
+    const b = await DigitizationBatch.findById(batchId);
+    if (!b) missing('Box not found');
+    if (user.role === 'INDEXER' && !b!.indexer?.equals(user.id)) fail('This box is not assigned to you');
+    if (b!.status === 'COMPLETED') fail('This box is completed');
+
+    const file = fd.get('file');
+    if (!(file instanceof File) || !file.size) fail('Choose the PG Board result list (.xlsx, .xls or .csv)');
+    const f = file as File;
+    if (!/\.(xlsx|xls|csv)$/i.test(f.name)) fail('Upload the board list as an Excel (.xlsx or .xls) or CSV file');
+    if (f.size > 10 * 1024 * 1024) fail('File is larger than 10 MB');
+    const sessionId = String(fd.get('session') ?? '');
+    if (!Types.ObjectId.isValid(sessionId)) fail('Choose the session of the final defence');
+    const session = await AcademicSession.findById(sessionId).lean();
+    if (!session) missing('Session not found');
+    const checkOnly = fd.get('mode') === 'check';
+
+    const parsed = parseBoardList(await f.arrayBuffer(), f.name);
+    if (!parsed.rows.length) return { ok: false, message: `${parsed.errors.length} problem(s) found. Nothing was saved.`, errors: parsed.errors };
+
+    // Keep going after row problems so one upload lists everything to fix (matching included).
+    // A Session column, when present, overrides the session chosen in the form for that row.
+    const sessionsByLabel = new Map((await AcademicSession.find().lean()).map((s) => [s.label.replace(/\s+/g, ''), s._id]));
+    const errors: CellError[] = [...parsed.errors];
+    const sessionOf = new Map<number, Types.ObjectId>();
+    for (const r of parsed.rows) {
+      if (!r.sessionText) { sessionOf.set(r.line, session!._id); continue; }
+      const s = sessionsByLabel.get(r.sessionText.replace(/\s+/g, '').replace('-', '/'));
+      if (s) sessionOf.set(r.line, s);
+      else errors.push({ sheet: 'Board list', row: r.line, column: 'SESSION', message: `Unknown session "${r.sessionText}"` });
+    }
+    const resolved = await resolveBoardRows(parsed.rows, boxDepartmentIds(b!));
+    errors.push(...resolved.errors);
+    errors.sort((x, y) => x.row - y.row);
+    if (errors.length) return { ok: false, message: `${errors.length} problem(s) found. Nothing was saved.`, errors };
+
+    // One sheet per programme and session: reuse this box's sheet if it is still being indexed.
+    type Group = {
+      departmentId: Types.ObjectId; programmeId: Types.ObjectId; programmeName: string; degreeType: string;
+      sessionId: Types.ObjectId; rows: typeof parsed.rows; sheet?: ResultSheetDoc;
+    };
+    const groups = new Map<string, Group>();
+    for (const r of parsed.rows) {
+      const t = resolved.targets.get(r.line)!;
+      const sid = sessionOf.get(r.line)!;
+      const key = `${t.programmeId}|${sid}`;
+      const g = groups.get(key) ?? { ...t, sessionId: sid, rows: [] };
+      g.rows.push(r);
+      groups.set(key, g);
+    }
+    const existing = await ResultSheet.find({ batch: b!._id, origin: 'LEGACY', programme: { $in: [...groups.values()].map((g) => g.programmeId) } });
+    for (const g of groups.values()) {
+      const s = existing.find((x) => x.programme.equals(g.programmeId) && x.session.equals(g.sessionId));
+      if (!s) continue;
+      if (!['DRAFT', 'RETURNED'].includes(s.status)) {
+        errors.push({ sheet: 'Board list', row: g.rows[0].line, column: 'PROG.', message: `Sheet ${s.reference} (${g.programmeName}) in this box is already ${s.status === 'LOCKED' ? 'locked' : 'with QA'}; its rows can no longer change` });
+      } else g.sheet = s;
+    }
+
+    // The same checks as single-row indexing (matric format, student in another department, duplicates).
+    const warnings: string[] = [];
+    for (const g of groups.values()) {
+      const like = g.sheet ?? { _id: new Types.ObjectId(), department: g.departmentId, programme: g.programmeId, session: g.sessionId, origin: 'LEGACY' as const };
+      for (const r of g.rows) {
+        const c = await checkRow(like, r.row, g.degreeType);
+        c.errors.forEach((m) => errors.push({ sheet: 'Board list', row: r.line, column: 'NAME/REG. NO.', message: m }));
+        c.warnings.forEach((w) => warnings.push(`Row ${r.line} (${r.row.matricNo}): ${w}`));
+      }
+    }
+    if (errors.length) return { ok: false, message: `${errors.length} problem(s) found. Nothing was saved.`, errors, warnings };
+
+    const list = [...groups.values()].sort((a, c) => a.programmeName.localeCompare(c.programmeName));
+    const newSheets = list.filter((g) => !g.sheet).length;
+    const summary = list.map((g) => `${g.programmeName}: ${g.rows.length}`).join('; ');
+    const meeting = parsed.meeting ? ` (${parsed.meeting} PG Board meeting)` : '';
+    if (checkOnly) {
+      return {
+        ok: true,
+        message: `Check passed${meeting}: ${parsed.rows.length} graduands in ${list.length} programme sheet(s), ${newSheets} new. ${summary}. Nothing was saved yet.`,
+        warnings,
+      };
+    }
+
+    const refs: string[] = [];
+    await withTxn(async () => {
+      for (const g of list) {
+        const sheet = g.sheet ?? await ResultSheet.create({
+          origin: 'LEGACY', reference: await nextSheetReference(), department: g.departmentId,
+          programme: g.programmeId, session: g.sessionId, batch: b!._id, status: 'DRAFT', createdBy: user.id,
+        });
+        for (const r of g.rows) await upsertGraduand(sheet, r.row);
+        await refreshCount(sheet._id);
+        refs.push(sheet.reference);
+      }
+    });
+    if (b!.status === 'INVENTORIED') { b!.status = 'IN_PROGRESS'; await b!.save(); }
+    await audit(user, 'batch.board_import', 'DigitizationBatch', batchId, undefined, {
+      file: f.name, meeting: parsed.meeting ?? null, session: session!.label, rows: parsed.rows.length, sheets: refs, newSheets,
+    });
+    return {
+      ok: true,
+      message: `Imported ${parsed.rows.length} graduands${meeting} into ${list.length} sheet(s) (${newSheets} new): ${refs.join(', ')}. Attach the scanned board list to each sheet, check the rows, then send them to QA.`,
       warnings,
     };
   });

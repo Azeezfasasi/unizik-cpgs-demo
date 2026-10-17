@@ -8,7 +8,7 @@ import { audit } from '@/lib/audit';
 import { fail, missing } from '@/lib/errors';
 import { BatchSchema, objectId } from '@/lib/validators';
 import type { ActionState } from '@/lib/action-state';
-import { DigitizationBatch, ResultSheet, User } from '@/models';
+import { Department, DigitizationBatch, ResultSheet, User } from '@/models';
 import { BATCH_STATUS } from '@/models/DigitizationBatch';
 
 export async function createBatch(_: ActionState, fd: FormData): Promise<ActionState> {
@@ -16,9 +16,18 @@ export async function createBatch(_: ActionState, fd: FormData): Promise<ActionS
   const res = await run(async () => {
     const user = await requirePermission('batch:assign');
     await db();
-    const data = BatchSchema.parse({ ...Object.fromEntries(fd), sessions: fd.getAll('sessions') });
-    const b = await DigitizationBatch.create({ ...data, createdBy: user.id });
-    await audit(user, 'batch.create', 'DigitizationBatch', b.id, undefined, { boxCode: b.boxCode, condition: b.condition });
+    const data = BatchSchema.parse({
+      ...Object.fromEntries(fd), sessions: fd.getAll('sessions'),
+      departments: fd.getAll('departments').map(String).filter(Boolean), allDepartments: fd.get('allDepartments') === 'on',
+    });
+    const departments = data.allDepartments ? [] : [...new Set(data.departments)];
+    if (departments.length && (await Department.countDocuments({ _id: { $in: departments } })) !== departments.length) {
+      fail('One of the chosen departments no longer exists');
+    }
+    const b = await DigitizationBatch.create({ ...data, departments, allDepartments: data.allDepartments, createdBy: user.id });
+    await audit(user, 'batch.create', 'DigitizationBatch', b.id, undefined, {
+      boxCode: b.boxCode, condition: b.condition, departments: departments.length, allDepartments: data.allDepartments,
+    });
     id = b.id;
   });
   // Portal forms go to the new item; REST API calls (fd __api=1) get its id instead.

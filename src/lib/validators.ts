@@ -85,13 +85,17 @@ export const UserCreateSchema = z.object({
 
 export const BatchSchema = z.object({
   boxCode:    z.string().trim().toUpperCase().regex(/^CRR-BOX-\d{4,}$/, 'Use the format CRR-BOX-0001'),
-  department: objectId,
+  /** One or more departments, unless the box covers all departments (allDepartments). */
+  departments: z.array(objectId).default([]),
+  allDepartments: z.boolean().default(false),
   sessions:   z.array(objectId).min(1, 'Pick at least one session'),
   estimatedSheets: z.coerce.number().int().min(0).max(100000),
   condition:  z.enum(['GOOD', 'FAIR', 'DAMAGED', 'SEVERELY_DAMAGED']),
   priority:   z.coerce.number().int().min(1).max(5),
   location:   optStr,
   notes:      optStr,
+}).refine((b) => b.allDepartments || b.departments.length > 0, {
+  path: ['departments'], message: 'Pick at least one department, or tick "All departments" for a PG Board list',
 });
 
 export { objectId };

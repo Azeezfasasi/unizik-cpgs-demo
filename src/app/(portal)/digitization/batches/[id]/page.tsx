@@ -8,20 +8,22 @@ import { requirePage } from '@/lib/auth';
 import { can } from '@/lib/rbac';
 import { listSheets } from '@/lib/queries';
 import { fmtDate, titleCase } from '@/lib/format';
+import { boxDepartmentIds, boxDepartmentLabel } from '@/lib/boxes';
 import { AcademicSession, DigitizationBatch, Programme, User } from '@/models';
 import { Badge, Card, DetailList, PageHeader, PageSkeleton } from '@/components/ui';
 import { SheetTable } from '@/components/SheetTable';
 import { ActionForm, SubmitButton } from '@/components/forms';
 import { PrintButton } from '@/components/PrintButton';
 import { assignBatch, setBatchStatus } from '../../actions';
-import { createLegacySheet } from '../../../sheets/actions';
+import { createLegacySheet, importBoardList } from '../../../sheets/actions';
 
 export const metadata: Metadata = { title: 'Box' };
 
 type Batch = {
   _id: Types.ObjectId; boxCode: string; status: string; condition: string; priority: number; estimatedSheets: number;
   location?: string; notes?: string; createdAt: Date;
-  department: { _id: Types.ObjectId; name: string; code: string }; sessions: { _id: Types.ObjectId; label: string }[];
+  department?: { _id: Types.ObjectId; name: string; code: string }; departments?: { _id: Types.ObjectId; name: string; code: string }[];
+  allDepartments?: boolean; sessions: { _id: Types.ObjectId; label: string }[];
   indexer?: { _id: Types.ObjectId; name: string }; reviewer?: { _id: Types.ObjectId; name: string };
 };
 
@@ -39,7 +41,7 @@ async function BatchPageContent({ params }: PageProps<'/digitization/batches/[id
   if (!Types.ObjectId.isValid(id)) notFound();
   await db();
   const b = await DigitizationBatch.findById(id)
-    .populate('department', 'name code').populate('sessions', 'label')
+    .populate('department', 'name code').populate('departments', 'name code').populate('sessions', 'label')
     .populate('indexer', 'name').populate('reviewer', 'name').lean<Batch>();
   if (!b) notFound();
   const mine = b.indexer?._id.equals(user.id) || b.reviewer?._id.equals(user.id);
@@ -47,22 +49,27 @@ async function BatchPageContent({ params }: PageProps<'/digitization/batches/[id
 
   const canAssign = can(user.role, 'batch:assign');
   const canIndex = user.role === 'TASKFORCE_LEAD' || (user.role === 'INDEXER' && b.indexer?._id.equals(user.id));
+  const deptIds = boxDepartmentIds(b);
 
-  const [sheets, programmes, sessions, indexers, reviewers, qr] = await Promise.all([
+  const [sheets, programmes, sessions, indexers, reviewers, qr, allSessions] = await Promise.all([
     listSheets({ batch: b._id }),
-    Programme.find({ department: b.department._id }).sort({ name: 1 }).lean(),
+    Programme.find(deptIds ? { department: { $in: deptIds } } : {}).sort({ name: 1 })
+      .populate<{ department: { _id: Types.ObjectId; name: string } }>('department', 'name').lean(),
     AcademicSession.find({ _id: { $in: b.sessions.map((s) => s._id) } }).sort({ startYear: 1 }).lean(),
     canAssign ? User.find({ isActive: true, role: { $in: ['INDEXER', 'TASKFORCE_LEAD'] } }).sort({ name: 1 }).lean() : [],
     canAssign ? User.find({ isActive: true, role: { $in: ['QA_REVIEWER', 'HEAD_RECORDS'] } }).sort({ name: 1 }).lean() : [],
     QRCode.toDataURL(`${b.boxCode}`, { margin: 1, width: 160, color: { dark: '#0f172a' } }),
+    canIndex ? AcademicSession.find().sort({ startYear: -1 }).lean() : [],
   ]);
+  const boxSessionIds = new Set(sessions.map((s) => s._id.toString()));
+  const otherSessions = allSessions.filter((s) => !boxSessionIds.has(s._id.toString()));
 
   return (
     <>
       <PageHeader
         back={{ href: '/digitization', label: 'Digitization' }}
         title={`Box ${b.boxCode}`}
-        description={`${b.department.name} · ${b.sessions.map((s) => s.label).join(', ')}`}
+        description={`${boxDepartmentLabel(b)} · ${b.sessions.map((s) => s.label).join(', ')}`}
         actions={<Badge tone={b.status === 'COMPLETED' ? 'success' : 'brand'}>{titleCase(b.status)}</Badge>}
       />
 
@@ -76,7 +83,11 @@ async function BatchPageContent({ params }: PageProps<'/digitization/batches/[id
                   <div>
                     <label className="label" htmlFor="programme">Programme</label>
                     <select id="programme" name="programme" required className="input">
-                      {programmes.map((p) => <option key={p._id.toString()} value={p._id.toString()}>{p.name}</option>)}
+                      {groupByDepartment(programmes).map(([dept, list]) => (
+                        <optgroup key={dept} label={dept}>
+                          {list.map((p) => <option key={p._id.toString()} value={p._id.toString()}>{p.name}</option>)}
+                        </optgroup>
+                      ))}
                     </select>
                   </div>
                   <div>
@@ -87,8 +98,47 @@ async function BatchPageContent({ params }: PageProps<'/digitization/batches/[id
                   </div>
                   <SubmitButton>Create sheet</SubmitButton>
                 </ActionForm>
-              ) : <p className="text-sm text-muted">No programmes registered for this department yet.</p>}
+              ) : <p className="text-sm text-muted">No programmes are registered for the departments in this box yet. Add them in Academic structure.</p>}
               <p className="mt-3 text-xs text-muted">Scan standard: 300 dpi minimum, colour, one PDF per result sheet, saved as PDF/A. Use the flatbed for fragile pages.</p>
+            </Card>
+          )}
+
+          {canIndex && b.status !== 'COMPLETED' && (
+            <Card title="Import a PG Board result list">
+              <p className="mb-4 text-sm">
+                Upload the board list Excel file as it is (title rows, then S/N, NAME/REG. NO., FACULTY, DEPARTMENT, PROG.,
+                semester GPAs, PROJECT, FCGPA, EFFECTIVE DATE OF GRADUATION, AREA OF SPECIALIZATION). One result sheet is
+                made for each programme in it, and the board meeting number is read from the title.
+              </p>
+              <ActionForm action={importBoardList.bind(null, id)} className="space-y-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="label" htmlFor="board-file">Board list (.xlsx, .xls or .csv)</label>
+                    <input id="board-file" name="file" type="file" required accept=".xlsx,.xls,.csv" className="input" />
+                  </div>
+                  <div>
+                    <label className="label" htmlFor="board-session">Session of the final defence</label>
+                    <select id="board-session" name="session" required className="input">
+                      <optgroup label="Sessions in this box">
+                        {sessions.map((s) => <option key={s._id.toString()} value={s._id.toString()}>{s.label}</option>)}
+                      </optgroup>
+                      {otherSessions.length > 0 && (
+                        <optgroup label="Other sessions">
+                          {otherSessions.map((s) => <option key={s._id.toString()} value={s._id.toString()}>{s.label}</option>)}
+                        </optgroup>
+                      )}
+                    </select>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <SubmitButton name="mode" value="check" className="btn-outline" pendingText="Checking…">Check only</SubmitButton>
+                  <SubmitButton name="mode" value="import" pendingText="Importing…">Import</SubmitButton>
+                </div>
+                <p className="text-xs text-muted">
+                  Departments are matched by name and programmes by type (PHD, MSC, LLM…). Every row is checked first;
+                  if anything does not match, nothing is saved and the rows are listed. A SESSION column, if present, overrides the session above.
+                </p>
+              </ActionForm>
             </Card>
           )}
 
@@ -104,7 +154,7 @@ async function BatchPageContent({ params }: PageProps<'/digitization/batches/[id
               <img src={qr} alt={`QR label for ${b.boxCode}`} width={96} height={96} />
               <div>
                 <div className="font-mono text-lg font-bold text-navy">{b.boxCode}</div>
-                <div className="text-xs text-muted">{b.department.code} · {b.sessions.map((s) => s.label).join(', ')}</div>
+                <div className="text-xs text-muted">{boxDepartmentLabel(b, 'code')} · {b.sessions.map((s) => s.label).join(', ')}</div>
               </div>
             </div>
           </Card>
@@ -153,4 +203,11 @@ async function BatchPageContent({ params }: PageProps<'/digitization/batches/[id
       </div>
     </>
   );
+}
+
+/** Programmes as [department name, programmes] pairs, departments in name order, for <optgroup>s. */
+function groupByDepartment<T extends { department: { name: string } }>(list: T[]) {
+  const by = new Map<string, T[]>();
+  for (const p of list) by.set(p.department.name, [...(by.get(p.department.name) ?? []), p]);
+  return [...by].sort(([a], [b]) => a.localeCompare(b));
 }

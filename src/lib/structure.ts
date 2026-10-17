@@ -25,6 +25,7 @@ const REFS: Record<StructureKind, Ref[]> = {
     { label: 'graduand record', model: m(GraduandRecord), field: 'department' },
     { label: 'result sheet', model: m(ResultSheet), field: 'department' },
     { label: 'box', model: m(DigitizationBatch), field: 'department' },
+    { label: 'box', model: m(DigitizationBatch), field: 'departments' },
     { label: 'staff account', model: m(User), field: 'department' },
     { label: 'file', model: m(StoredFile), field: 'department' },
   ],
@@ -47,12 +48,13 @@ export async function usageMap(kind: StructureKind, ids?: Types.ObjectId[]) {
     const match = ids ? { [field]: { $in: ids } } : { [field]: { $ne: null } };
     const rows = await model.aggregate<{ _id: Types.ObjectId; n: number }>([
       { $match: match },
-      ...(field === 'sessions' ? [{ $unwind: `$${field}` }] : []),
+      ...(field === 'sessions' || field === 'departments' ? [{ $unwind: `$${field}` }] : []),
       { $group: { _id: `$${field}`, n: { $sum: 1 } } },
     ]);
     for (const r of rows) {
       const key = String(r._id);
-      map.set(key, { ...map.get(key), [label]: r.n });
+      // Several fields can count the same kind of item (a box's department or departments).
+      map.set(key, { ...map.get(key), [label]: (map.get(key)?.[label] ?? 0) + r.n });
     }
   }));
   return map;
