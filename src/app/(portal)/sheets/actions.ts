@@ -561,6 +561,65 @@ export async function lockSheet(sheetId: string, _: ActionState, fd: FormData): 
   });
 }
 
+// ---------------------------------------------------------------- legacy: bulk QA and lock
+
+/** At most this many sheets per bulk action, so one click stays quick and reviewable. */
+const BULK_MAX = 100;
+
+function selectedIds(fd: FormData) {
+  const ids = [...new Set(fd.getAll('ids').map(String).filter((v) => Types.ObjectId.isValid(v)))];
+  if (!ids.length) fail('Select at least one sheet');
+  if (ids.length > BULK_MAX) fail(`Select at most ${BULK_MAX} sheets at a time`);
+  return ids;
+}
+
+/**
+ * Runs a single-sheet action on each selected sheet with the same rules and audit entries,
+ * and reports how many succeeded and why any were skipped.
+ */
+async function forEachSheet(ids: string[], verb: string, one: (id: string) => Promise<ActionState>): Promise<ActionState> {
+  const refs = new Map((await ResultSheet.find({ _id: { $in: ids } }).select('reference').lean()).map((s) => [String(s._id), s.reference]));
+  const done: string[] = [];
+  const skipped: string[] = [];
+  for (const id of ids) {
+    const res = await one(id);
+    const ref = refs.get(id) ?? id;
+    if (res.ok) done.push(ref);
+    else skipped.push(`${ref}: ${res.message ?? 'not allowed'}`);
+  }
+  return {
+    ok: done.length > 0,
+    message: done.length
+      ? `${verb} ${done.length} sheet${done.length === 1 ? '' : 's'}${skipped.length ? `; ${skipped.length} skipped (see below)` : ''}.`
+      : `No sheets were ${verb.toLowerCase()}; see the reasons below.`,
+    warnings: skipped.length ? skipped : undefined,
+  };
+}
+
+/** Passes QA for several sheets at once; the reviewer attests to having compared every row of each. */
+export async function bulkQaPass(_: ActionState, fd: FormData): Promise<ActionState> {
+  return run(async () => {
+    await requirePermission('legacy:qa');
+    const ids = selectedIds(fd);
+    if (fd.get('attest') !== 'on') fail('Confirm you compared every row of the selected sheets against their scans');
+    const one = new FormData();
+    one.set('decision', 'pass');
+    one.set('attest', 'on');
+    return forEachSheet(ids, 'QA passed for', (id) => qaDecision(id, {}, one));
+  });
+}
+
+/** Locks several QA-passed sheets at once (sheets with illegible rows only when accepted). */
+export async function bulkLockSheets(_: ActionState, fd: FormData): Promise<ActionState> {
+  return run(async () => {
+    await requirePermission('record:lock');
+    const ids = selectedIds(fd);
+    const one = new FormData();
+    if (fd.get('acceptIllegible') === 'on') one.set('acceptIllegible', 'on');
+    return forEachSheet(ids, 'Locked', (id) => lockSheet(id, {}, one));
+  });
+}
+
 export async function returnFromRecords(sheetId: string, _: ActionState, fd: FormData): Promise<ActionState> {
   return run(async () => {
     const user = await requirePermission('record:lock');

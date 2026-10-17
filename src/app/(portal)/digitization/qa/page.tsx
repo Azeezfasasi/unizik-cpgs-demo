@@ -6,6 +6,9 @@ import { listSheets } from '@/lib/queries';
 import { DigitizationBatch } from '@/models';
 import { Card, PageHeader, PageSkeleton } from '@/components/ui';
 import { SheetTable } from '@/components/SheetTable';
+import { BulkSheetForm } from '@/components/BulkSheetForm';
+import { can } from '@/lib/rbac';
+import { bulkLockSheets, bulkQaPass } from '../../sheets/actions';
 
 export const metadata: Metadata = { title: 'QA review' };
 
@@ -25,9 +28,11 @@ async function QaQueuePageContent() {
     const batches = await DigitizationBatch.find({ reviewer: user.id }).select('_id').lean();
     filter.batch = { $in: batches.map((b) => b._id) };
   }
-  const [queue, done] = await Promise.all([
+  const canLock = can(user.role, 'record:lock');
+  const [queue, done, toLock] = await Promise.all([
     listSheets(filter),
     listSheets({ origin: 'LEGACY', approvals: { $elemMatch: { stage: 'QA', by: user.id } } }, 25),
+    canLock ? listSheets({ origin: 'LEGACY', status: 'QA_PASSED' }) : Promise.resolve([]),
   ]);
 
   return (
@@ -38,8 +43,17 @@ async function QaQueuePageContent() {
       />
       <div className="space-y-6">
         <Card title={`Awaiting QA (${queue.length})`} bodyClass="p-0">
-          <SheetTable rows={queue} empty="Nothing waiting for QA" />
+          <BulkSheetForm rows={queue} empty="Nothing waiting for QA"
+            action={bulkQaPass} submitLabel="Pass QA for selected" pendingText="Passing…"
+            confirm={{ name: 'attest', label: 'I compared every row of each selected sheet against its scan, and all values match.' }} />
         </Card>
+        {canLock && (
+          <Card title={`QA passed, ready to lock (${toLock.length})`} bodyClass="p-0">
+            <BulkSheetForm rows={toLock} empty="No sheets waiting to be locked"
+              action={bulkLockSheets} submitLabel="Lock selected" pendingText="Locking…"
+              option={{ name: 'acceptIllegible', label: 'Also lock sheets that have rows flagged illegible (otherwise they are skipped)' }} />
+          </Card>
+        )}
         <Card title="Recently reviewed by you" bodyClass="p-0">
           <SheetTable rows={done} empty="No reviews yet" />
         </Card>
