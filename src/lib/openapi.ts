@@ -311,6 +311,20 @@ const paths: Json = {
   ...structure('Departments', 'departments', 'Department', 'DepartmentInput', exDepartment, { name: 'Computer Science', code: 'CSC', faculty: '6acd40af9c18c073359430a1', matricPattern: '^20\\d{8}$' }, [query('faculty', 'Only departments in this faculty', id())]),
   ...structure('Programmes', 'programmes', 'Programme', 'ProgrammeInput', exProgramme, { name: 'M.Sc. Computer Science', code: 'MSC-CSC', degreeType: 'MSc', department: '6acd40af9c18c073359430a2' }, [query('department', 'Only programmes in this department', id())]),
   ...structure('Sessions', 'sessions', 'Session', 'SessionInput', exSession, { startYear: 2025 }),
+  '/structure/import': {
+    post: op('Faculties', 'Bulk import faculties, departments and programmes', 'System Administrator', {
+      description: 'Upload the structure template (download it from Academic structure, or GET /api/templates/structure; add ?current=1 for the existing structure). One row per programme with its department and faculty; a row may stop at the department or faculty. Items are matched by code: existing ones are reused and never changed. Every row is checked first and nothing is saved unless all rows are valid. mode=check only reports what would be added.',
+      requestBody: multipartBody(obj({
+        file: str('Filled structure template (.xlsx or .csv). Columns: Faculty, Faculty Code, Department, Department Code, Programme, Programme Code, Degree Type, Matric Pattern', { format: 'binary' }),
+        mode: str('check: validate and report only; import (default): save', { enum: ['check', 'import'] }),
+      }, ['file']), 'The filled structure template'),
+      responses: {
+        201: actionOk(undefined, { message: 'Added 1 faculties, 2 departments and 5 programmes from structure.xlsx. 3 item(s) already exist and are left as they are.' }),
+        200: actionOk(undefined, { message: 'Check passed for 8 row(s): would add 1 faculties, 2 departments and 5 programmes. Nothing was saved yet.' }),
+        400: { description: 'No file in the multipart body' }, ...errs(401, 403, 422, 429),
+      },
+    }),
+  },
   '/grading-bands': {
     get: op('Grading bands', 'Class-of-degree bands', 'any authenticated caller', { responses: { 200: ok('Bands in force', dataOf(ref('GradingBands')), { data: { bands: [{ class: 'DISTINCTION', label: 'Distinction', minCgpa: 4.5 }, { class: 'CREDIT', label: 'Credit', minCgpa: 3.5 }, { class: 'MERIT', label: 'Merit', minCgpa: 3 }, { class: 'PASS', label: 'Pass', minCgpa: 2.5 }, { class: 'FAIL', label: 'Fail', minCgpa: 0 }], official: false, updatedAt: null } }), ...STD } }),
     put: op('Grading bands', 'Save the official bands', 'System Administrator', { requestBody: jsonBody(ref('GradingBandsInput'), { DISTINCTION: 4.5, CREDIT: 3.5, MERIT: 3.0, PASS: 2.5 }), responses: { 200: actionOk(ref('GradingBands'), { message: 'Grading bands saved. Indexing and submission checks use them from now on.', data: { bands: [{ class: 'DISTINCTION', label: 'Distinction', minCgpa: 4.5 }, { class: 'CREDIT', label: 'Credit', minCgpa: 3.5 }, { class: 'MERIT', label: 'Merit', minCgpa: 3 }, { class: 'PASS', label: 'Pass', minCgpa: 2.5 }, { class: 'FAIL', label: 'Fail', minCgpa: 0 }], official: true, updatedAt: NOW } }), ...errs(401, 403, 422, 429) } }),
