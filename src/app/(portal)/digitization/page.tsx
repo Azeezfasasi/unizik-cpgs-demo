@@ -1,11 +1,13 @@
 import { Suspense } from 'react';
 import Link from 'next/link';
 import type { Metadata } from 'next';
+import type { Types } from 'mongoose';
 import { db } from '@/lib/db';
 import { requirePage } from '@/lib/auth';
 import { can } from '@/lib/rbac';
 import { listSheets } from '@/lib/queries';
 import { titleCase } from '@/lib/format';
+import { boxDepartmentLabel } from '@/lib/boxes';
 import { AcademicSession, Department, DigitizationBatch, ResultSheet } from '@/models';
 import { Badge, Card, EmptyState, PageHeader, StatCard, PageSkeleton } from '@/components/ui';
 import { SheetTable } from '@/components/SheetTable';
@@ -16,7 +18,8 @@ export const metadata: Metadata = { title: 'Legacy digitization' };
 
 type BatchRow = {
   _id: { toString(): string }; boxCode: string; status: string; condition: string; priority: number;
-  estimatedSheets: number; department?: { name: string; code: string }; sessions: { label: string }[];
+  estimatedSheets: number; sessions: { label: string }[];
+  department?: { _id: Types.ObjectId; name: string; code: string }; departments?: { _id: Types.ObjectId; name: string; code: string }[]; allDepartments?: boolean;
   indexer?: { name: string }; reviewer?: { name: string };
 };
 
@@ -38,7 +41,7 @@ async function DigitizationPageContent() {
 
   const [batches, departments, sessions, sheetStats, toLock] = await Promise.all([
     DigitizationBatch.find(batchFilter).sort({ priority: 1, boxCode: 1 })
-      .populate('department', 'name code').populate('sessions', 'label')
+      .populate('department', 'name code').populate('departments', 'name code').populate('sessions', 'label')
       .populate('indexer', 'name').populate('reviewer', 'name').lean<BatchRow[]>(),
     Department.find().sort({ name: 1 }).lean(),
     AcademicSession.find().sort({ startYear: -1 }).lean(),
@@ -94,7 +97,7 @@ async function DigitizationPageContent() {
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="font-mono text-sm font-semibold whitespace-nowrap text-brand">{b.boxCode}</div>
-                          <div className="truncate text-sm text-navy">{b.department?.name}</div>
+                          <div className="truncate text-sm text-navy">{boxDepartmentLabel(b)}</div>
                         </div>
                         <Badge tone={b.status === 'COMPLETED' ? 'success' : b.status === 'IN_PROGRESS' ? 'brand' : 'neutral'}>{titleCase(b.status)}</Badge>
                       </div>
@@ -136,7 +139,7 @@ async function DigitizationPageContent() {
                             {(b.condition === 'DAMAGED' || b.condition === 'SEVERELY_DAMAGED') && <Badge tone="danger">{titleCase(b.condition)}</Badge>}
                           </div>
                         </td>
-                        <td>{b.department?.name}</td>
+                        <td>{boxDepartmentLabel(b)}</td>
                         <td className="text-xs">{b.sessions.map((s) => s.label).join(', ')}</td>
                         <td className="text-xs">
                           <div>Indexer: {b.indexer?.name ?? <span className="text-amber-700">unassigned</span>}</div>
@@ -164,12 +167,17 @@ async function DigitizationPageContent() {
                 <label className="label" htmlFor="boxCode">Box code</label>
                 <input id="boxCode" name="boxCode" required placeholder="CRR-BOX-0001" className="input font-mono uppercase" />
               </div>
-              <div>
-                <label className="label" htmlFor="department">Department</label>
-                <select id="department" name="department" required className="input">
+              <fieldset className="space-y-2">
+                <legend className="label">Departments in the box</legend>
+                <label className="flex items-start gap-2 text-sm">
+                  <input type="checkbox" name="allDepartments" className="mt-1 accent-brand" />
+                  <span>All departments <span className="text-muted">(e.g. PG Board result lists that cover many departments)</span></span>
+                </label>
+                <select id="departments" name="departments" multiple aria-label="Departments in the box" className="input h-36">
                   {departments.map((d) => <option key={d._id.toString()} value={d._id.toString()}>{d.name}</option>)}
                 </select>
-              </div>
+                <p className="text-xs text-muted">Otherwise pick one or more. Hold Ctrl (or ⌘) to pick several; on a phone, tap each department.</p>
+              </fieldset>
               <div>
                 <label className="label" htmlFor="sessions">Sessions in the box</label>
                 <select id="sessions" name="sessions" multiple required className="input h-36 sm:h-28">

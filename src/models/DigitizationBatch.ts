@@ -5,7 +5,12 @@ export const BOX_CONDITION = ['GOOD', 'FAIR', 'DAMAGED', 'SEVERELY_DAMAGED'] as 
 
 const DigitizationBatchSchema = new Schema({
   boxCode:     { type: String, required: true, unique: true, uppercase: true },  // CRR-BOX-0042
-  department:  { type: Types.ObjectId, ref: 'Department', required: true, index: true },
+  /** Set when the box holds one department's files (all boxes created before multi-department boxes). */
+  department:  { type: Types.ObjectId, ref: 'Department', index: true },
+  /** Departments whose files are in the box. */
+  departments: { type: [{ type: Types.ObjectId, ref: 'Department' }], default: undefined, index: true },
+  /** The box holds files for any department, e.g. PG Board result lists. */
+  allDepartments: { type: Boolean, default: false },
   sessions:    [{ type: Types.ObjectId, ref: 'AcademicSession' }],
   estimatedSheets: { type: Number, default: 0 },
   condition:   { type: String, enum: BOX_CONDITION, default: 'FAIR' },

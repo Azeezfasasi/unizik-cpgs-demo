@@ -10,7 +10,7 @@ export const GET = v1(async (_req: Request, ctx: RouteCtx) => {
   assertId(id, 'Box');
   await db();
   const b = await DigitizationBatch.findById(id)
-    .populate('department', 'name code').populate('sessions', 'label')
+    .populate('department', 'name code').populate('departments', 'name code').populate('sessions', 'label')
     .populate('indexer', 'name email').populate('reviewer', 'name email').lean<Record<string, { _id?: { equals(x: string): boolean } }>>();
   if (!b) return apiError(404, 'Box not found');
   if ((user.role === 'INDEXER' || user.role === 'QA_REVIEWER') && !b.indexer?._id?.equals(user.id) && !b.reviewer?._id?.equals(user.id)) {
