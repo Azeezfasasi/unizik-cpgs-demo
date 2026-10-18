@@ -13,12 +13,41 @@ import { UserError } from './errors';
 
 type SheetLike = Pick<ResultSheetDoc, '_id' | 'department' | 'programme' | 'session' | 'origin'>;
 
+/**
+ * Lookups shared by all rows of one import, so a 100-row upload reads the department rules,
+ * programme and grading bands once instead of once per row. With skipCount, the caller updates
+ * each sheet's row count once at the end (refreshCount).
+ */
+export type RowCache = {
+  dept: Map<string, Promise<{ matricPattern?: string | null } | null>>;
+  programme: Map<string, Promise<{ name: string; degreeType: string } | null>>;
+  bands?: Promise<Awaited<ReturnType<typeof getGradingBands>>>;
+  skipCount: boolean;
+};
+export const rowCache = (): RowCache => ({ dept: new Map(), programme: new Map(), skipCount: true });
+
+function cached<T>(map: Map<string, Promise<T>> | undefined, key: string, load: () => Promise<T>) {
+  if (!map) return load();
+  if (!map.has(key)) map.set(key, load());
+  return map.get(key)!;
+}
+const bandsOf = (cache?: RowCache) => (cache ? (cache.bands ??= getGradingBands()) : getGradingBands());
+
+/** Runs fn over items, `size` at a time (independent rows: different students). */
+export async function inChunks<T, R>(items: T[], size: number, fn: (item: T, index: number) => Promise<R>) {
+  const out: R[] = [];
+  for (let i = 0; i < items.length; i += size) {
+    out.push(...await Promise.all(items.slice(i, i + size).map((x, j) => fn(x, i + j))));
+  }
+  return out;
+}
+
 /** Checks a row against department rules and existing records. Returns errors (blocking) and warnings. */
-export async function checkRow(sheet: SheetLike, row: GraduandRow, degreeType?: string) {
+export async function checkRow(sheet: SheetLike, row: GraduandRow, degreeType?: string, cache?: RowCache) {
   const errors: string[] = [];
   const warnings: string[] = [];
 
-  const dept = await Department.findById(sheet.department).select('matricPattern').lean();
+  const dept = await cached(cache?.dept, String(sheet.department), () => Department.findById(sheet.department).select('matricPattern').lean());
   if (dept?.matricPattern) {
     try {
       if (!new RegExp(dept.matricPattern).test(row.matricNo)) {
@@ -38,7 +67,7 @@ export async function checkRow(sheet: SheetLike, row: GraduandRow, degreeType?: 
     if (dup) errors.push(`${row.matricNo} already has a record for this programme (sheet ${dup.sheet?.reference})`);
   }
 
-  const { bands } = await getGradingBands();
+  const { bands } = await bandsOf(cache);
   const c = classConsistency(row.cgpa, row.classOfDegree, degreeType, bands);
   if (c) warnings.push(c);
   if (row.courses.some((x) => x.score != null && x.grade && gradeMismatch(x.score, x.grade))) {
@@ -54,8 +83,8 @@ function gradeMismatch(score: number, grade: string) {
 }
 
 /** Creates or updates the student and their graduand record on this sheet. */
-export async function upsertGraduand(sheet: SheetLike, row: GraduandRow, extra: { sourceFile?: string } = {}) {
-  const programme = await Programme.findById(sheet.programme).lean();
+export async function upsertGraduand(sheet: SheetLike, row: GraduandRow, extra: { sourceFile?: string } = {}, cache?: RowCache) {
+  const programme = await cached(cache?.programme, String(sheet.programme), () => Programme.findById(sheet.programme).select('name degreeType').lean());
   if (!programme) throw new UserError('Programme not found');
 
   const student = await Student.findOneAndUpdate(
@@ -74,7 +103,7 @@ export async function upsertGraduand(sheet: SheetLike, row: GraduandRow, extra: 
   }
 
   const data = {
-    ...await rowFields(row, programme.degreeType),
+    ...await rowFields(row, programme.degreeType, cache),
     student: student._id, sheet: sheet._id, department: sheet.department, programme: sheet.programme,
     session: sheet.session, origin: sheet.origin, degree: programme.name,
     courses: row.courses, sourcePage: row.sourcePage, illegible: !!row.illegible, remarks: row.remarks,
@@ -83,14 +112,14 @@ export async function upsertGraduand(sheet: SheetLike, row: GraduandRow, extra: 
   const rec = existing
     ? await GraduandRecord.findByIdAndUpdate(existing._id, { $set: data }, { returnDocument: 'after' })
     : await GraduandRecord.create(data);
-  await refreshCount(sheet._id);
+  if (!cache?.skipCount) await refreshCount(sheet._id);
   return rec!;
 }
 
 /** Result fields of a row, with the class of degree worked out from the CGPA when it was left out. */
-async function rowFields(row: GraduandRow, degreeType: string) {
+async function rowFields(row: GraduandRow, degreeType: string, cache?: RowCache) {
   let cls: ClassOfDegree | undefined = row.classOfDegree;
-  if (!cls) cls = degreeType === 'PhD' ? 'NOT_APPLICABLE' : expectedClass(row.cgpa!, (await getGradingBands()).bands);
+  if (!cls) cls = degreeType === 'PhD' ? 'NOT_APPLICABLE' : expectedClass(row.cgpa!, (await bandsOf(cache)).bands);
   return {
     cgpa: row.cgpa, classOfDegree: cls, thesisTitle: row.thesisTitle, supervisor: row.supervisor,
     semesterGpas: row.semesterGpas.length ? row.semesterGpas : undefined, projectGrade: row.projectGrade,

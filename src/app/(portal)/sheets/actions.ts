@@ -11,7 +11,7 @@ import { audit } from '@/lib/audit';
 import { fail, missing } from '@/lib/errors';
 import { withTxn } from '@/lib/txn';
 import { FLOW, type FlowStage } from '@/lib/workflow';
-import { checkRow, notifySheet, refreshCount, snapshotRows, upsertGraduand } from '@/lib/sheets';
+import { checkRow, inChunks, notifySheet, refreshCount, rowCache, snapshotRows, upsertGraduand } from '@/lib/sheets';
 import { parseTemplate } from '@/lib/template';
 import { boxDepartmentIds } from '@/lib/boxes';
 import { applyStructureAdditions, describeAdditions, parseBoardList, resolveBoardRows } from '@/lib/board-list';
@@ -135,11 +135,12 @@ export async function uploadWorkbook(sheetId: string, _: ActionState, fd: FormDa
     const prog = await Programme.findById(sheet.programme).lean();
     const checkErrors: CellError[] = [];
     const warnings: string[] = [];
-    for (const [i, row] of rows.entries()) {
-      const c = await checkRow(sheet, row, prog?.degreeType);
+    const cache = rowCache();
+    const checks = await inChunks(rows, 8, (row) => checkRow(sheet, row, prog?.degreeType, cache));
+    checks.forEach((c, i) => {
       c.errors.forEach((m) => checkErrors.push({ sheet: 'Graduands', row: i + 2, column: 'Matric No', message: m }));
-      c.warnings.forEach((w) => warnings.push(`${row.matricNo}: ${w}`));
-    }
+      c.warnings.forEach((w) => warnings.push(`${rows[i].matricNo}: ${w}`));
+    });
     if (checkErrors.length) return { ok: false, message: `${checkErrors.length} problem(s) found. Nothing was saved.`, errors: checkErrors, warnings };
 
     const before = sheet.recordCount;
@@ -148,7 +149,7 @@ export async function uploadWorkbook(sheetId: string, _: ActionState, fd: FormDa
       const existing = await GraduandRecord.find({ sheet: sheet._id }).populate<{ student: { matricNo: string } }>('student', 'matricNo');
       const stale = existing.filter((r) => !keep.has(r.student.matricNo)).map((r) => r._id);
       if (stale.length) await GraduandRecord.deleteMany({ _id: { $in: stale }, locked: false });
-      for (const row of rows) await upsertGraduand(sheet, row);
+      await inChunks(rows, 8, (row) => upsertGraduand(sheet, row, {}, cache));
     });
     await refreshCount(sheet._id);
     await audit(user, 'sheet.workbook_upload', 'ResultSheet', sheetId, { rows: before }, { rows: rows.length, file: (file as File).name });
@@ -294,18 +295,19 @@ export async function importLegacyRows(sheetId: string, _: ActionState, fd: Form
     const prog = await Programme.findById(sheet.programme).lean();
     const checkErrors: CellError[] = [];
     const warnings: string[] = [];
-    for (const [i, row] of rows.entries()) {
-      const c = await checkRow(sheet, row, prog?.degreeType);
+    const cache = rowCache();
+    const checks = await inChunks(rows, 8, (row) => checkRow(sheet, row, prog?.degreeType, cache));
+    checks.forEach((c, i) => {
       c.errors.forEach((m) => checkErrors.push({ sheet: 'Graduands', row: i + 2, column: 'Matric No', message: m }));
-      c.warnings.forEach((w) => warnings.push(`${row.matricNo}: ${w}`));
-    }
+      c.warnings.forEach((w) => warnings.push(`${rows[i].matricNo}: ${w}`));
+    });
     if (checkErrors.length) return { ok: false, message: `${checkErrors.length} problem(s) found. Nothing was saved.`, errors: checkErrors, warnings };
 
     const onSheet = new Set((await GraduandRecord.find({ sheet: sheet._id })
       .populate<{ student: { matricNo: string } }>('student', 'matricNo').lean()).map((r) => r.student.matricNo));
     const updated = rows.filter((r) => onSheet.has(r.matricNo)).length;
     await withTxn(async () => {
-      for (const row of rows) await upsertGraduand(sheet, row, { sourceFile: sourceFile || undefined });
+      await inChunks(rows, 8, (row) => upsertGraduand(sheet, row, { sourceFile: sourceFile || undefined }, cache));
     });
     await refreshCount(sheet._id);
     const illegible = rows.filter((r) => r.illegible).length;
@@ -423,13 +425,15 @@ export async function importBoardList(batchId: string, _: ActionState, fd: FormD
     }
 
     // The same checks as single-row indexing (matric format, student in another department, duplicates).
+    const cache = rowCache();
     for (const g of groups.values()) {
       const like = g.sheet ?? { _id: new Types.ObjectId(), department: g.departmentId, programme: g.programmeId, session: g.sessionId, origin: 'LEGACY' as const };
-      for (const r of g.rows) {
-        const c = await checkRow(like, r.row, g.degreeType);
+      const checks = await inChunks(g.rows, 8, (r) => checkRow(like, r.row, g.degreeType, cache));
+      checks.forEach((c, i) => {
+        const r = g.rows[i];
         c.errors.forEach((m) => errors.push({ sheet: r.sheet, row: r.line, column: 'REGISTRATION NUMBER', message: m }));
         c.warnings.forEach((w) => warnings.push(`${r.sheet} row ${r.line} (${r.row.matricNo}): ${w}`));
-      }
+      });
     }
     if (errors.length) return { ok: false, message: `${errors.length} problem(s) found. Nothing was saved.`, errors, warnings, data: choiceData };
 
@@ -456,7 +460,7 @@ export async function importBoardList(batchId: string, _: ActionState, fd: FormD
           origin: 'LEGACY', reference: await nextSheetReference(), department: g.departmentId,
           programme: g.programmeId, session: g.sessionId, batch: b!._id, status: 'DRAFT', createdBy: user.id,
         });
-        for (const r of g.rows) await upsertGraduand(sheet, r.row);
+        await inChunks(g.rows, 8, (r) => upsertGraduand(sheet, r.row, {}, cache));
         await refreshCount(sheet._id);
         refs.push(sheet.reference);
       }
@@ -617,6 +621,56 @@ export async function bulkLockSheets(_: ActionState, fd: FormData): Promise<Acti
     const one = new FormData();
     if (fd.get('acceptIllegible') === 'on') one.set('acceptIllegible', 'on');
     return forEachSheet(ids, 'Locked', (id) => lockSheet(id, {}, one));
+  });
+}
+
+/** Sends several indexed sheets to QA at once (each needs its scan and at least one row). */
+export async function bulkMarkIndexed(_: ActionState, fd: FormData): Promise<ActionState> {
+  return run(async () => {
+    await requirePermission('legacy:upload');
+    const ids = selectedIds(fd);
+    return forEachSheet(ids, 'Sent to QA', (id) => markIndexed(id));
+  });
+}
+
+/**
+ * Attaches one uploaded scan to several legacy sheets (e.g. the scanned PG Board list, which covers
+ * sheets of several departments). The scan must be a legacy scan uploaded by the same person, and
+ * each sheet must be one they can still edit.
+ */
+export async function attachScanToSheets(fileId: string, sheetIds: string[]): Promise<ActionState> {
+  return run(async () => {
+    const user = await requirePermission('legacy:upload');
+    if (!Types.ObjectId.isValid(fileId)) missing('File not found');
+    const ids = [...new Set(sheetIds.filter((v) => Types.ObjectId.isValid(v)))];
+    if (!ids.length) fail('Choose at least one sheet');
+    if (ids.length > BULK_MAX) fail(`Choose at most ${BULK_MAX} sheets at a time`);
+    const file = await StoredFile.findById(fileId).lean();
+    if (!file || !file.uploadedBy.equals(user.id)) missing('File not found');
+    if (file!.purpose !== 'LEGACY_SCAN') fail('Only legacy scans can be attached to several sheets');
+
+    const done: string[] = [];
+    const skipped: string[] = [];
+    for (const id of ids) {
+      try {
+        const sheet = await loadSheet(id);
+        if (sheet.origin !== 'LEGACY') fail('Not a legacy sheet');
+        await assertCanEdit(user, sheet);
+        if (!sheet.files.some((f) => f.equals(fileId))) {
+          sheet.files.push(new Types.ObjectId(fileId));
+          await sheet.save();
+          await audit(user, 'sheet.file_attach', 'ResultSheet', id, undefined, { file: fileId, sha256: file!.sha256, bulk: true });
+        }
+        done.push(sheet.reference);
+      } catch (e) {
+        skipped.push(`${id}: ${(e as Error).message}`);
+      }
+    }
+    return {
+      ok: done.length > 0,
+      message: `${file!.originalName ?? 'Scan'} attached to ${done.length} sheet${done.length === 1 ? '' : 's'}${skipped.length ? `; ${skipped.length} skipped` : ''}.`,
+      warnings: skipped.length ? skipped : undefined,
+    };
   });
 }
 
