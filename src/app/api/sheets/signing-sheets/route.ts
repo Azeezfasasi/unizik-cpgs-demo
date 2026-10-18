@@ -11,6 +11,9 @@ import { ResultSheet } from '@/models';
 
 const MAX = 100;
 
+// Up to 100 sheets are built per request: allow more than the default function time on Vercel.
+export const maxDuration = 120;
+
 /**
  * Several sheets for signing (certified transcriptions for legacy sheets) as one PDF, each sheet on
  * its own pages, for printing in one go. Query: ids=<id>,<id>,… (up to 100). Sheets without rows,
