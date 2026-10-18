@@ -9,13 +9,15 @@ import { can } from '@/lib/rbac';
 import { listSheets } from '@/lib/queries';
 import { fmtDate, titleCase } from '@/lib/format';
 import { boxDepartmentIds, boxDepartmentLabel } from '@/lib/boxes';
-import { AcademicSession, DigitizationBatch, Programme, User } from '@/models';
+import { AcademicSession, DigitizationBatch, GraduandRecord, Programme, User } from '@/models';
 import { Badge, Card, DetailList, PageHeader, PageSkeleton } from '@/components/ui';
 import { SheetTable } from '@/components/SheetTable';
 import { ActionForm, SubmitButton } from '@/components/forms';
 import { PrintButton } from '@/components/PrintButton';
 import { assignBatch, setBatchStatus } from '../../actions';
-import { createLegacySheet, importBoardList } from '../../../sheets/actions';
+import { attachScanToSheets, bulkMarkIndexed, createLegacySheet, importBoardList } from '../../../sheets/actions';
+import { BoxSheetsPanel } from './BoxSheetsPanel';
+import { BulkScanUploader } from './BulkScanUploader';
 import { BoardImportForm } from './BoardImportForm';
 
 export const metadata: Metadata = { title: 'Box' };
@@ -62,6 +64,16 @@ async function BatchPageContent({ params }: PageProps<'/digitization/batches/[id
     QRCode.toDataURL(`${b.boxCode}`, { margin: 1, width: 160, color: { dark: '#0f172a' } }),
     canIndex ? AcademicSession.find().sort({ startYear: -1 }).lean() : [],
   ]);
+  // Sheets still being indexed, with their graduands' reg. numbers, for matching scans by file name.
+  const editable = canIndex ? sheets.filter((s) => s.status === 'DRAFT' || s.status === 'RETURNED') : [];
+  const matrics = editable.length
+    ? await GraduandRecord.find({ sheet: { $in: editable.map((s) => s.id) } }).select('sheet student')
+      .populate<{ student: { matricNo: string } }>('student', 'matricNo').lean()
+    : [];
+  const uploadTargets = editable.map((s) => ({
+    id: s.id, reference: s.reference, programme: s.programme ?? '',
+    matrics: matrics.filter((m) => String(m.sheet) === s.id).map((m) => m.student.matricNo),
+  }));
   const boxSessionIds = new Set(sessions.map((s) => s._id.toString()));
   const otherSessions = allSessions.filter((s) => !boxSessionIds.has(s._id.toString()));
 
@@ -120,8 +132,16 @@ async function BatchPageContent({ params }: PageProps<'/digitization/batches/[id
             </Card>
           )}
 
+          {canIndex && b.status !== 'COMPLETED' && sheets.length > 0 && (
+            <Card title="Upload scans for many sheets">
+              <BulkScanUploader sheets={uploadTargets} attach={attachScanToSheets} />
+            </Card>
+          )}
+
           <Card title={`Result sheets (${sheets.length})`} bodyClass="p-0">
-            <SheetTable rows={sheets} empty="No sheets created from this box yet" showDept={false} />
+            {canIndex
+              ? <BoxSheetsPanel rows={sheets} sendToQa={bulkMarkIndexed} />
+              : <SheetTable rows={sheets} empty="No sheets created from this box yet" showDept={false} />}
           </Card>
         </div>
 
