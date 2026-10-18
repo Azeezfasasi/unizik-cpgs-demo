@@ -6,11 +6,11 @@ import { z } from 'zod';
 import { db } from '@/lib/db';
 import { run } from '@/lib/action';
 import { assertInScope, requirePermission, type CurrentUser } from '@/lib/auth';
-import { assertCanEdit } from '@/lib/sheet-access';
+import { assertCanEdit, canEdit } from '@/lib/sheet-access';
 import { audit } from '@/lib/audit';
 import { fail, missing } from '@/lib/errors';
 import { withTxn } from '@/lib/txn';
-import { FLOW, type FlowStage } from '@/lib/workflow';
+import { FLOW, isEditable, type FlowStage } from '@/lib/workflow';
 import { checkRow, inChunks, notifySheet, refreshCount, rowCache, snapshotRows, upsertGraduand } from '@/lib/sheets';
 import { parseTemplate } from '@/lib/template';
 import { boxDepartmentIds } from '@/lib/boxes';
@@ -649,26 +649,30 @@ export async function attachScanToSheets(fileId: string, sheetIds: string[]): Pr
     if (!file || !file.uploadedBy.equals(user.id)) missing('File not found');
     if (file!.purpose !== 'LEGACY_SCAN') fail('Only legacy scans can be attached to several sheets');
 
-    const done: string[] = [];
-    const skipped: string[] = [];
-    for (const id of ids) {
-      try {
-        const sheet = await loadSheet(id);
-        if (sheet.origin !== 'LEGACY') fail('Not a legacy sheet');
-        await assertCanEdit(user, sheet);
-        if (!sheet.files.some((f) => f.equals(fileId))) {
-          sheet.files.push(new Types.ObjectId(fileId));
-          await sheet.save();
-          await audit(user, 'sheet.file_attach', 'ResultSheet', id, undefined, { file: fileId, sha256: file!.sha256, bulk: true });
-        }
-        done.push(sheet.reference);
-      } catch (e) {
-        skipped.push(`${id}: ${(e as Error).message}`);
-      }
+    // One read for all sheets, the edit rule checked once per box, one write and one audit entry:
+    // attaching a board-list scan to dozens of sheets takes a few round trips, not one per sheet.
+    const sheets = await ResultSheet.find({ _id: { $in: ids } }).select('reference status origin department batch files').lean();
+    const allowedByBox = new Map<string, boolean>();
+    const ok: typeof sheets = [];
+    const skipped: string[] = ids.filter((id) => !sheets.some((x) => String(x._id) === id)).map((id) => `${id}: Sheet not found`);
+    for (const sheet of sheets) {
+      if (sheet.origin !== 'LEGACY') { skipped.push(`${sheet.reference}: Not a legacy sheet`); continue; }
+      if (!isEditable(sheet.status)) { skipped.push(`${sheet.reference}: This sheet can no longer be edited`); continue; }
+      const box = String(sheet.batch ?? '');
+      if (!allowedByBox.has(box)) allowedByBox.set(box, await canEdit(user, sheet));
+      if (!allowedByBox.get(box)) { skipped.push(`${sheet.reference}: Only the indexer assigned to this box can edit this sheet`); continue; }
+      ok.push(sheet);
+    }
+    const added = ok.filter((x) => !x.files.some((f) => f.equals(fileId)));
+    if (added.length) {
+      await ResultSheet.updateMany({ _id: { $in: added.map((x) => x._id) } }, { $addToSet: { files: new Types.ObjectId(fileId) } });
+      await audit(user, 'sheet.file_attach_bulk', 'StoredFile', fileId, undefined, {
+        sha256: file!.sha256, sheets: added.map((x) => x.reference),
+      });
     }
     return {
-      ok: done.length > 0,
-      message: `${file!.originalName ?? 'Scan'} attached to ${done.length} sheet${done.length === 1 ? '' : 's'}${skipped.length ? `; ${skipped.length} skipped` : ''}.`,
+      ok: ok.length > 0,
+      message: `${file!.originalName ?? 'Scan'} attached to ${ok.length} sheet${ok.length === 1 ? '' : 's'}${skipped.length ? `; ${skipped.length} skipped` : ''}.`,
       warnings: skipped.length ? skipped : undefined,
     };
   });

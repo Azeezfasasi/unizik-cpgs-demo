@@ -26,6 +26,7 @@ export type RowCache = {
 };
 export const rowCache = (): RowCache => ({ dept: new Map(), programme: new Map(), skipCount: true });
 
+/** Shares one lookup between rows. load must return a real Promise (a Mongoose query needs .exec(): a query can run only once). */
 function cached<T>(map: Map<string, Promise<T>> | undefined, key: string, load: () => Promise<T>) {
   if (!map) return load();
   if (!map.has(key)) map.set(key, load());
@@ -47,7 +48,7 @@ export async function checkRow(sheet: SheetLike, row: GraduandRow, degreeType?: 
   const errors: string[] = [];
   const warnings: string[] = [];
 
-  const dept = await cached(cache?.dept, String(sheet.department), () => Department.findById(sheet.department).select('matricPattern').lean());
+  const dept = await cached(cache?.dept, String(sheet.department), () => Department.findById(sheet.department).select('matricPattern').lean().exec());
   if (dept?.matricPattern) {
     try {
       if (!new RegExp(dept.matricPattern).test(row.matricNo)) {
@@ -84,7 +85,7 @@ function gradeMismatch(score: number, grade: string) {
 
 /** Creates or updates the student and their graduand record on this sheet. */
 export async function upsertGraduand(sheet: SheetLike, row: GraduandRow, extra: { sourceFile?: string } = {}, cache?: RowCache) {
-  const programme = await cached(cache?.programme, String(sheet.programme), () => Programme.findById(sheet.programme).select('name degreeType').lean());
+  const programme = await cached(cache?.programme, String(sheet.programme), () => Programme.findById(sheet.programme).select('name degreeType').lean().exec());
   if (!programme) throw new UserError('Programme not found');
 
   const student = await Student.findOneAndUpdate(
