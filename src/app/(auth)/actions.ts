@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import QRCode from 'qrcode';
 import { redirect } from 'next/navigation';
 import { headers } from 'next/headers';
+import { safeNext } from '@/lib/safe-next';
 import { db } from '@/lib/db';
 import { User } from '@/models';
 import { clearMfaPrompt, createSession, setMfaPrompt } from '@/lib/session';
@@ -17,11 +18,6 @@ import type { Role } from '@/lib/rbac';
 
 const MAX_FAILED = 5;
 const LOCK_MINUTES = 15;
-
-function safeNext(next: FormDataEntryValue | null) {
-  const n = String(next ?? '');
-  return n.startsWith('/') && !n.startsWith('//') ? n : '/dashboard';
-}
 
 export async function login(_: ActionState, fd: FormData): Promise<ActionState> {
   const email = String(fd.get('email') ?? '').trim().toLowerCase();
