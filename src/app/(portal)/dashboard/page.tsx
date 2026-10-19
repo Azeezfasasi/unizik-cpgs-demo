@@ -7,9 +7,19 @@ import { inboxCounts } from '@/lib/nav';
 import { can, ROLE_LABELS } from '@/lib/rbac';
 import { FLOW, STATUS_LABELS, type FlowStage } from '@/lib/workflow';
 import { daysSince } from '@/lib/format';
-import { AcademicSession, DigitizationBatch, GraduandRecord, ResultSheet } from '@/models';
+import type { Types } from 'mongoose';
+import { CLASS_LABELS, CLASS_OF_DEGREE, type ClassOfDegree } from '@/lib/grading';
+import { AcademicSession, Department, DigitizationBatch, GraduandRecord, ResultSheet } from '@/models';
 import { Alert, Card, PageHeader, StatCard, PageSkeleton } from '@/components/ui';
 import { BarList } from '@/components/BarList';
+import { ColumnChart, DonutChart } from '@/components/charts';
+
+const CLASS_COLORS: Record<ClassOfDegree, string> = {
+  DISTINCTION: '#007a55', CREDIT: '#009689', MERIT: '#5eead4', PASS: '#94a3b8', FAIL: '#dc2626', NOT_APPLICABLE: '#475569',
+};
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+/** Sessions shown in "Graduands by session"; legacy records can span decades. */
+const RECENT_SESSIONS = 12;
 
 export const metadata: Metadata = { title: 'Dashboard' };
 
@@ -28,7 +38,8 @@ async function DashboardContent({ searchParams }: PageProps<'/dashboard'>) {
   const scope = await scopeFilter(user);
   const counts = await inboxCounts(user);
 
-  const [records, locked, legacy, online, bySession, sheetStatus, batches] = await Promise.all([
+  const since = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth() - 11, 1));
+  const [records, locked, legacy, online, bySession, sheetStatus, batches, byMonth, byClass, byDept] = await Promise.all([
     GraduandRecord.countDocuments(scope),
     GraduandRecord.countDocuments({ ...scope, locked: true }),
     GraduandRecord.countDocuments({ ...scope, origin: 'LEGACY' }),
@@ -45,7 +56,44 @@ async function DashboardContent({ searchParams }: PageProps<'/dashboard'>) {
       { $match: scope },
       { $group: { _id: '$status', n: { $sum: 1 } } },
     ]),
+    GraduandRecord.aggregate<{ _id: { y: number; m: number; origin: string }; n: number }>([
+      { $match: { ...scope, createdAt: { $gte: since } } },
+      { $group: { _id: { y: { $year: '$createdAt' }, m: { $month: '$createdAt' }, origin: '$origin' }, n: { $sum: 1 } } },
+    ]),
+    GraduandRecord.aggregate<{ _id: string | null; n: number }>([
+      { $match: scope },
+      { $group: { _id: '$classOfDegree', n: { $sum: 1 } } },
+    ]),
+    GraduandRecord.aggregate<{ _id: Types.ObjectId; n: number }>([
+      { $match: scope },
+      { $group: { _id: '$department', n: { $sum: 1 } } },
+    ]),
   ]);
+
+  // Last 12 months, oldest first, legacy and online stacked.
+  const months = Array.from({ length: 12 }, (_, i) => new Date(Date.UTC(since.getUTCFullYear(), since.getUTCMonth() + i, 1)));
+  const monthly = months.map((d) => {
+    const n = (origin: string) => byMonth.find((r) => r._id.y === d.getUTCFullYear() && r._id.m === d.getUTCMonth() + 1 && r._id.origin === origin)?.n ?? 0;
+    return { label: MONTHS[d.getUTCMonth()] +(d.getUTCMonth() === 0 || d === months[0] ? ` ’${String(d.getUTCFullYear()).slice(2)}` : ''), values: [n('LEGACY'), n('ONLINE')] };
+  });
+
+  const classParts = [...CLASS_OF_DEGREE, null].map((c) => ({
+    name: c ? CLASS_LABELS[c] : 'Not recorded',
+    value: byClass.filter((r) => (r._id ?? null) === c).reduce((a, r) => a + r.n, 0),
+    color: c ? CLASS_COLORS[c] : '#cbd5e1',
+  })).filter((p) => p.value > 0 || (p.name !== 'Not recorded' && p.name !== 'Not applicable'));
+
+  // University-wide or faculty staff see faculties; staff limited to departments see their departments.
+  const depts = await Department.find({ _id: { $in: byDept.map((r) => r._id) } }).populate<{ faculty: { name: string } }>('faculty', 'name').lean();
+  const byFaculty = !Object.keys(scope).length;
+  const groupRows = new Map<string, number>();
+  for (const r of byDept) {
+    const d = depts.find((x) => x._id.equals(r._id));
+    const key = (byFaculty ? d?.faculty?.name : d?.name) ?? 'Unknown';
+    groupRows.set(key, (groupRows.get(key) ?? 0) + r.n);
+  }
+  const groupBars = [...groupRows].map(([name, value]) => ({ label: name.replace(/^Faculty of /i, ''), title: name, value }))
+    .sort((a, b) => b.value - a.value).slice(0, 10);
 
   const sessions = await AcademicSession.find({ _id: { $in: bySession.map((s) => s._id) } }).lean();
   const sessionRows = bySession
@@ -101,8 +149,24 @@ async function DashboardContent({ searchParams }: PageProps<'/dashboard'>) {
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <Card title="Records added, last 12 months" className="lg:col-span-2">
+          <ColumnChart data={monthly} unit="records" series={[{ name: 'Legacy (digitized)', color: '#0f172a' }, { name: 'Online submissions', color: '#009689' }]} />
+        </Card>
+
+        <Card title="Class of degree">
+          {records ? <DonutChart parts={classParts} unit="graduands" /> : <p className="text-sm text-muted">No records yet.</p>}
+        </Card>
+
+        <Card title={byFaculty ? 'Records by faculty' : 'Records by department'}>
+          {groupBars.length ? <BarList rows={groupBars} unit="records" wide /> : <p className="text-sm text-muted">No records yet.</p>}
+          {groupRows.size > 10 && <p className="mt-3 text-xs text-muted">Top 10 of {groupRows.size} shown.</p>}
+        </Card>
+
         <Card title="Graduands by session">
-          {sessionRows.length ? <BarList rows={sessionRows} unit="graduands" /> : <p className="text-sm text-muted">No records yet.</p>}
+          {sessionRows.length ? <BarList rows={sessionRows.slice(-RECENT_SESSIONS)} unit="graduands" /> : <p className="text-sm text-muted">No records yet.</p>}
+          {sessionRows.length > RECENT_SESSIONS && (
+            <p className="mt-3 text-xs text-muted">Latest {RECENT_SESSIONS} of {sessionRows.length} sessions shown. <Link href="/records" className="link">Search records</Link> for earlier ones.</p>
+          )}
         </Card>
 
         {showDigitization && (
