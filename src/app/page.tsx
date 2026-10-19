@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { Logo, LogoMark } from '@/components/Logo';
 import { PublicFooter } from '@/components/PublicFooter';
+import { StaffLink } from '@/components/StaffLink';
 
 export default function Home() {
   return (
@@ -11,7 +12,7 @@ export default function Home() {
           <nav className="flex shrink-0 items-center gap-2 text-sm">
             {/* On phones the hero's "Verify a document" button is right below, so the header keeps only sign-in. */}
             <Link href="/verify" className="hidden rounded-md px-3 py-2 whitespace-nowrap text-slate-200 hover:text-white sm:inline-block">Verify a result</Link>
-            <Link href="/login" className="btn-primary px-3 py-1.5 whitespace-nowrap sm:px-4 sm:py-2">Staff sign in</Link>
+            <StaffLink className="btn-primary px-3 py-1.5 whitespace-nowrap sm:px-4 sm:py-2" />
           </nav>
         </div>
       </header>
@@ -31,7 +32,7 @@ export default function Home() {
               tamper-evident digital record.
             </p>
             <div className="mt-6 grid grid-cols-2 gap-3 sm:mt-8 sm:flex sm:flex-wrap">
-              <Link href="/login" className="btn-primary px-5 py-2.5">Staff sign in</Link>
+              <StaffLink className="btn-primary px-5 py-2.5 whitespace-nowrap" />
               <Link href="/verify" className="btn border border-white/30 px-5 py-2.5 whitespace-nowrap text-white hover:bg-white/10">Verify a document</Link>
             </div>
           </div>

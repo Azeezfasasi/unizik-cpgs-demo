@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { StaffLink } from './StaffLink';
 
 export function PublicFooter() {
   return (
@@ -8,7 +9,7 @@ export function PublicFooter() {
         <div className="flex gap-4">
           <Link href="/privacy" className="hover:text-brand">Privacy notice</Link>
           <Link href="/verify" className="hover:text-brand">Verify a result</Link>
-          <Link href="/login" className="hover:text-brand">Staff sign in</Link>
+          <StaffLink className="hover:text-brand" />
         </div>
       </div>
     </footer>
