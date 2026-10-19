@@ -1,6 +1,6 @@
 import 'server-only';
-import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
-import { BLACK, GREEN, MUTED, NAVY, TEAL, safe, truncate } from './pdf';
+import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFImage, type PDFPage } from 'pdf-lib';
+import { BLACK, GREEN, MUTED, NAVY, TEAL, drawLogoBadge, embedLogo, safe, truncate } from './pdf';
 import { CLASS_LABELS, type ClassOfDegree } from './grading';
 import { fmtDateTime } from './format';
 
@@ -96,9 +96,10 @@ export async function renderSigningSheet(input: SigningSheetData) {
   pdf.setSubject(`Row fingerprint ${d.fingerprint}`);
   const font = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const logo = await embedLogo(pdf);
 
   const cols = columnsFor(d.rows);
-  let page = newPage(pdf, d, font, bold);
+  let page = newPage(pdf, d, font, bold, logo);
   let y = tableTop(page, bold, cols);
 
   const thesisW = cols[cols.length - 1].w - 6;
@@ -108,7 +109,7 @@ export async function renderSigningSheet(input: SigningSheetData) {
     const thesis = wrap(r.thesisTitle ?? '', font, 8.5, thesisW, maxLines);
     const rowH = ROW_H + (thesis.length - 1) * LINE_H;
     if (y - rowH + ROW_H < M + 40) {
-      page = newPage(pdf, d, font, bold);
+      page = newPage(pdf, d, font, bold, logo);
       y = tableTop(page, bold, cols);
     }
     if (i % 2 === 1) page.drawRectangle({ x: M, y: y - rowH + ROW_H - 5, width: W - 2 * M, height: rowH, color: rgb(0.97, 0.98, 0.98) });
@@ -131,7 +132,7 @@ export async function renderSigningSheet(input: SigningSheetData) {
   // Certification and signatures, kept together on one page.
   const BLOCK = 175;
   if (y - BLOCK < M + 26) {
-    page = newPage(pdf, d, font, bold);
+    page = newPage(pdf, d, font, bold, logo);
     y = H - 150;
   } else {
     y -= 24;
@@ -171,12 +172,13 @@ function wrap(text: string, font: PDFFont, size: number, width: number, maxLines
   return kept;
 }
 
-function newPage(pdf: PDFDocument, d: SigningSheetData, font: PDFFont, bold: PDFFont) {
+function newPage(pdf: PDFDocument, d: SigningSheetData, font: PDFFont, bold: PDFFont, logo: PDFImage) {
   const page = pdf.addPage([W, H]);
   page.drawRectangle({ x: 0, y: H - 52, width: W, height: 52, color: NAVY });
   page.drawRectangle({ x: 0, y: H - 55, width: W, height: 3, color: TEAL });
-  page.drawText('NNAMDI AZIKIWE UNIVERSITY, AWKA', { x: M, y: H - 26, size: 13, font: bold, color: rgb(1, 1, 1) });
-  page.drawText('College of Postgraduate Studies', { x: M, y: H - 42, size: 9.5, font, color: rgb(0.85, 0.92, 0.91) });
+  drawLogoBadge(page, logo, M + 21, H - 26, 42);
+  page.drawText('NNAMDI AZIKIWE UNIVERSITY, AWKA', { x: M + 52, y: H - 26, size: 13, font: bold, color: rgb(1, 1, 1) });
+  page.drawText('College of Postgraduate Studies', { x: M + 52, y: H - 42, size: 9.5, font, color: rgb(0.85, 0.92, 0.91) });
   const ref = `Ref: ${d.reference}`;
   page.drawText(ref, { x: W - M - bold.widthOfTextAtSize(ref, 10), y: H - 32, size: 10, font: bold, color: rgb(1, 1, 1) });
 
