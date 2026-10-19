@@ -1,8 +1,9 @@
 import 'server-only';
-import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
+import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFImage, type PDFPage } from 'pdf-lib';
 import QRCode from 'qrcode';
 import { CLASS_LABELS, fmtProjectGrade, semesterGpa, semesterGroups, type ClassOfDegree } from './grading';
 import { fmtDate } from './format';
+import { UNIZIK_LOGO_PNG } from './pdf-logo';
 
 export const NAVY = rgb(0x0f / 255, 0x17 / 255, 0x2a / 255);
 export const TEAL = rgb(0, 0x96 / 255, 0x89 / 255);
@@ -38,6 +39,17 @@ export function safe(s: string) {
   return s.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\x20-\x7E -ÿ–—…·]/g, '?');
 }
 
+export function embedLogo(pdf: PDFDocument) {
+  return pdf.embedPng(Buffer.from(UNIZIK_LOGO_PNG, 'base64'));
+}
+
+/** The UNIZIK crest on a white disc (it would not show on the navy letterhead otherwise), centred at (cx, cy). */
+export function drawLogoBadge(page: PDFPage, logo: PDFImage, cx: number, cy: number, diameter: number) {
+  page.drawCircle({ x: cx, y: cy, size: diameter / 2, color: rgb(1, 1, 1) });
+  const h = diameter * 0.8, w = h * (logo.width / logo.height);
+  page.drawImage(logo, { x: cx - w / 2, y: cy - h / 2, width: w, height: h });
+}
+
 function sanitise<T>(v: T): T {
   if (typeof v === 'string') return safe(v) as T;
   if (Array.isArray(v)) return v.map(sanitise) as T;
@@ -57,6 +69,7 @@ export async function renderResultDocument(input: DocumentData) {
   const font = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
   const qr = await pdf.embedPng(await QRCode.toBuffer(d.url, { margin: 1, width: 240, color: { dark: '#0f172a' } }));
+  const logo = await embedLogo(pdf);
 
   let page = pdf.addPage([595.28, 841.89]); // A4
   const { width, height } = page.getSize();
@@ -65,9 +78,11 @@ export async function renderResultDocument(input: DocumentData) {
   // Letterhead
   page.drawRectangle({ x: 0, y: height - 96, width, height: 96, color: NAVY });
   page.drawRectangle({ x: 0, y: height - 100, width, height: 4, color: TEAL });
-  page.drawText('NNAMDI AZIKIWE UNIVERSITY, AWKA', { x: M, y: height - 44, size: 15, font: bold, color: rgb(1, 1, 1) });
-  page.drawText('College of Postgraduate Studies  ·  Records Unit', { x: M, y: height - 64, size: 10.5, font, color: rgb(0.85, 0.92, 0.91) });
-  page.drawText('P.M.B. 5025, Awka, Anambra State, Nigeria', { x: M, y: height - 80, size: 9, font, color: rgb(0.7, 0.76, 0.8) });
+  drawLogoBadge(page, logo, M + 36, height - 48, 72);
+  const tx = M + 88;
+  page.drawText('NNAMDI AZIKIWE UNIVERSITY, AWKA', { x: tx, y: height - 44, size: 15, font: bold, color: rgb(1, 1, 1) });
+  page.drawText('College of Postgraduate Studies  ·  Records Unit', { x: tx, y: height - 64, size: 10.5, font, color: rgb(0.85, 0.92, 0.91) });
+  page.drawText('P.M.B. 5025, Awka, Anambra State, Nigeria', { x: tx, y: height - 80, size: 9, font, color: rgb(0.7, 0.76, 0.8) });
 
   let y = height - 140;
   const title = d.kind === 'TRANSCRIPT' ? 'ACADEMIC TRANSCRIPT' : 'STATEMENT OF RESULT';
