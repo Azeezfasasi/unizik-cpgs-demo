@@ -6,7 +6,9 @@ import { requirePermission } from '@/lib/auth';
 import { audit } from '@/lib/audit';
 import { fail, missing } from '@/lib/errors';
 import { withTxn } from '@/lib/txn';
+import { z } from 'zod';
 import { CLASS_OF_DEGREE } from '@/lib/grading';
+import { CourseSchema } from '@/lib/validators';
 import { sendMail, link } from '@/lib/mail';
 import type { ActionState } from '@/lib/action-state';
 import { Amendment, GraduandRecord, StoredFile, User, Verification } from '@/models';
@@ -43,39 +45,89 @@ function current(rec: Record<string, unknown>, field: AmendableField) {
   return v ?? null;
 }
 
+type Change = { field: string; from: unknown; to: unknown };
+
+/** Checks the record and evidence, then files the amendment and tells the Provost. */
+async function fileAmendment(recordId: string, fd: FormData, build: (rec: Record<string, unknown>) => Change[] | Promise<Change[]>,
+  { subject, intro }: { subject: string; intro: string }) {
+  const user = await requirePermission('amendment:request');
+  await db();
+  const rec = await GraduandRecord.findById(recordId).lean();
+  if (!rec) missing('Record not found');
+  if (!rec!.locked) fail('Unlocked records are corrected on their sheet, not by amendment');
+  if (await Amendment.exists({ record: recordId, status: 'PENDING' })) fail('This record already has a pending amendment');
+
+  const changes = await build(rec as unknown as Record<string, unknown>);
+  if (!changes.length) fail('Change at least one value');
+  const reason = String(fd.get('reason') ?? '').trim();
+  if (reason.length < 10) fail('Explain the reason for the correction (at least 10 characters)');
+  const evidence = String(fd.get('evidence') ?? '');
+  if (!evidence) fail('Upload the evidence (e.g. Board extract or corrected signed sheet)');
+  const file = await StoredFile.findOne({ _id: evidence, purpose: 'AMENDMENT_EVIDENCE', uploadedBy: user.id }).lean();
+  if (!file) missing('Evidence file not found');
+
+  const a = await Amendment.create({ record: recordId, changes, reason, evidence, requestedBy: user.id });
+  await audit(user, 'amendment.request', 'Amendment', a.id, undefined, { record: recordId, changes, reason });
+
+  const provosts = await User.find({ role: 'PROVOST', isActive: true }).select('name email').lean();
+  await sendMail({
+    to: provosts.map((p) => ({ email: p.email, name: p.name })),
+    subject,
+    html: `<p>${intro}</p>${link('/amendments', 'Review amendments')}`,
+  });
+}
+
 export async function requestAmendment(recordId: string, _: ActionState, fd: FormData): Promise<ActionState> {
   return run(async () => {
-    const user = await requirePermission('amendment:request');
-    await db();
-    const rec = await GraduandRecord.findById(recordId).lean();
-    if (!rec) missing('Record not found');
-    if (!rec!.locked) fail('Unlocked records are corrected on their sheet, not by amendment');
-    if (await Amendment.exists({ record: recordId, status: 'PENDING' })) fail('This record already has a pending amendment');
-
-    const changes = FIELDS.flatMap((f) => {
+    await fileAmendment(recordId, fd, (rec) => FIELDS.flatMap((f) => {
       if (!fd.has(f)) return [];
       const to = normalise(f, String(fd.get(f)));
-      const from = current(rec as unknown as Record<string, unknown>, f);
+      const from = current(rec, f);
       return String(to ?? '') === String(from ?? '') ? [] : [{ field: f, from, to }];
-    });
-    if (!changes.length) fail('Change at least one value');
-    const reason = String(fd.get('reason') ?? '').trim();
-    if (reason.length < 10) fail('Explain the reason for the correction (at least 10 characters)');
-    const evidence = String(fd.get('evidence') ?? '');
-    if (!evidence) fail('Upload the evidence (e.g. Board extract or corrected signed sheet)');
-    const file = await StoredFile.findOne({ _id: evidence, purpose: 'AMENDMENT_EVIDENCE', uploadedBy: user.id }).lean();
-    if (!file) missing('Evidence file not found');
-
-    const a = await Amendment.create({ record: recordId, changes, reason, evidence, requestedBy: user.id });
-    await audit(user, 'amendment.request', 'Amendment', a.id, undefined, { record: recordId, changes, reason });
-
-    const provosts = await User.find({ role: 'PROVOST', isActive: true }).select('name email').lean();
-    await sendMail({
-      to: provosts.map((p) => ({ email: p.email, name: p.name })),
+    }), {
       subject: 'Amendment to a locked result awaits your approval',
-      html: `<p>The Head of Records has requested a correction to a locked graduand record.</p>${link('/amendments', 'Review amendments')}`,
+      intro: 'The Head of Records has requested a correction to a locked graduand record.',
     });
     return { ok: true, message: 'Amendment sent to the Provost for approval.' };
+  });
+}
+
+const CourseList = z.array(CourseSchema).max(80, 'At most 80 courses');
+type Course = z.infer<typeof CourseSchema>;
+const courseKey = (c: Partial<Course>) => [c.code, c.title ?? '', c.units, c.grade ?? '', c.semester ?? ''].join('|');
+
+/**
+ * Course results for a locked record, semester by semester, from the Student's Final Result sheet
+ * (rows without a semester are the project / thesis / dissertation). Goes to the Provost like any
+ * amendment; on approval they replace the record's courses and print on the transcript.
+ */
+export async function requestCourseResults(recordId: string, _: ActionState, fd: FormData): Promise<ActionState> {
+  return run(async () => {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(String(fd.get('courses') ?? '[]'));
+    } catch {
+      fail('The course list could not be read; reload the page and try again');
+    }
+    const res = CourseList.safeParse(parsed);
+    if (!res.success) {
+      const iss = res.error.issues[0];
+      const row = typeof iss.path[0] === 'number' ? ` (course ${iss.path[0] + 1})` : '';
+      fail(`${iss.path[1] === 'code' ? 'Each course needs a code' : iss.path[1] === 'units' ? 'Credit must be a whole number from 0 to 30' : iss.message}${row}`);
+    }
+    const courses = res.data!.map((c) => ({ code: c.code, title: c.title, units: c.units, grade: c.grade, ...(c.semester ? { semester: c.semester } : {}) }));
+    const dup = courses.find((c, i) => courses.findIndex((x) => x.code === c.code && x.semester === c.semester) !== i);
+    if (dup) fail(`${dup.code} is listed twice in the same semester`);
+
+    await fileAmendment(recordId, fd, (rec) => {
+      const from = ((rec.courses as Course[] | undefined) ?? []).map((c) => ({ code: c.code, title: c.title, units: c.units, grade: c.grade, ...(c.semester ? { semester: c.semester } : {}) }));
+      const same = from.length === courses.length && from.map(courseKey).sort().join() === courses.map(courseKey).sort().join();
+      return same ? [] : [{ field: 'courses', from, to: courses }];
+    }, {
+      subject: 'Course results for a locked record await your approval',
+      intro: 'The Head of Records has entered course results for a locked graduand record, with the signed result sheet as evidence.',
+    });
+    return { ok: true, message: `${courses.length} course result(s) sent to the Provost for approval.` };
   });
 }
 
@@ -97,9 +149,14 @@ export async function decideAmendment(amendmentId: string, _: ActionState, fd: F
 
       const rec = await GraduandRecord.findById(a!.record).session(session);
       if (!rec) missing('Record not found');
-      const snapshot = Object.fromEntries(FIELDS.map((f) => [f, current(rec!.toObject(), f)]));
+      const snapshot: Record<string, unknown> = Object.fromEntries(FIELDS.map((f) => [f, current(rec!.toObject(), f)]));
+      if (a!.changes.some((c) => c.field === 'courses')) snapshot.courses = rec!.toObject().courses ?? [];
       rec!.history.push({ version: rec!.version, data: snapshot, amendment: a!._id, at: new Date() });
       for (const c of a!.changes) {
+        if (c.field === 'courses') {
+          rec!.set('courses', Array.isArray(c.to) ? c.to : []);
+          continue;
+        }
         const f = c.field as AmendableField;
         rec!.set(f, DATE_FIELDS.includes(f) && c.to ? new Date(c.to as string) : c.to ?? undefined);
       }

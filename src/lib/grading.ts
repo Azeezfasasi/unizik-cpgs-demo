@@ -78,6 +78,21 @@ export function semesterGpa(courses: GradedCourse[], semester: number) {
   return units ? Math.round((points / units) * 100) / 100 : null;
 }
 
+/**
+ * Credits, quality points (credit × grade point) and GPA of a set of courses, as totalled on the
+ * Student's Final Result sheet: TQP / TC. Ungraded courses are left out.
+ */
+export function courseTotals(courses: GradedCourse[]) {
+  let credits = 0, points = 0;
+  for (const c of courses) {
+    const gp = c.grade ? GRADE_POINTS[c.grade as Letter] : undefined;
+    if (!c.units || gp == null) continue;
+    credits += c.units;
+    points += c.units * gp;
+  }
+  return { credits, points, gpa: credits ? Math.round((points / credits) * 100) / 100 : null };
+}
+
 /** Warnings where a semester GPA worked out from the courses differs from the one recorded. */
 export function semesterGpaWarnings(courses: GradedCourse[], recorded: number[] = []) {
   const ORD = ['1st', '2nd', '3rd', '4th'];
