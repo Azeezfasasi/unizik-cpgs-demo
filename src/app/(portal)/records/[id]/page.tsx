@@ -16,6 +16,7 @@ import { issueDocument } from '../../transcripts/actions';
 import { DocumentActions } from '../../transcripts/DocumentActions';
 import { AmendmentForm } from './AmendmentForm';
 import { IssueDocumentForm } from './IssueDocumentForm';
+import { CourseResultsForm } from './CourseResultsForm';
 
 export const metadata: Metadata = { title: 'Graduand record' };
 
@@ -34,6 +35,9 @@ type Rec = BoardFields & {
   programme: { name: string; degreeType: string }; session: { label: string };
   sheet: { _id: Types.ObjectId; reference: string; status: string; files: Types.ObjectId[] };
 };
+
+/** A changed value for the history lists; course lists are summarised. */
+const showValue = (v: unknown) => (Array.isArray(v) ? `${v.length} course${v.length === 1 ? '' : 's'}` : String(v ?? '—'));
 
 export default function RecordPage(props: PageProps<'/records/[id]'>) {
   return (
@@ -132,7 +136,7 @@ async function RecordPageContent({ params }: PageProps<'/records/[id]'>) {
                         {(g.semester != null || r.courses.some((c) => c.semester)) && (
                           <tr className="bg-slate-50">
                             <td colSpan={5} className="text-xs font-semibold text-navy">
-                              {g.semester != null ? `${['1st', '2nd', '3rd', '4th'][g.semester - 1]} semester` : 'Semester not recorded'}
+                              {g.semester != null ? `${['1st', '2nd', '3rd', '4th'][g.semester - 1]} semester` : 'Project / thesis, or semester not recorded'}
                               {gpa != null && <span className="ml-2 font-normal text-muted tabular-nums">GPA {gpa.toFixed(2)}</span>}
                             </td>
                           </tr>
@@ -204,6 +208,17 @@ async function RecordPageContent({ params }: PageProps<'/records/[id]'>) {
           )}
 
           {canAmend && r.locked && !pendingAmendment && (
+            <Card title={r.courses.length ? 'Correct course results' : 'Add course results'}>
+              <p className="mb-4 text-sm text-muted">
+                Course results by semester, from the Student&rsquo;s Final Result sheet. They print on the transcript once the Provost approves.
+              </p>
+              <CourseResultsForm recordId={id} cgpa={r.cgpa} courses={r.courses.map((c) => ({
+                code: c.code, title: c.title ?? undefined, units: c.units ?? undefined, grade: c.grade ?? undefined, semester: c.semester ?? undefined,
+              }))} />
+            </Card>
+          )}
+
+          {canAmend && r.locked && !pendingAmendment && (
             <Card title="Request an amendment">
               <p className="mb-4 text-sm text-muted">Locked records change only through an amendment approved by the Provost. The current version stays readable.</p>
               <AmendmentForm recordId={id} current={{
@@ -224,7 +239,7 @@ async function RecordPageContent({ params }: PageProps<'/records/[id]'>) {
                       <span className="font-medium text-navy">Requested by {a.requestedBy?.name} · {fmtDate(a.createdAt)}</span>
                       <Badge tone={a.status === 'APPROVED' ? 'success' : a.status === 'REJECTED' ? 'danger' : 'warning'}>{titleCase(a.status)}</Badge>
                     </div>
-                    <ul className="mt-2 text-xs">{a.changes.map((c, i) => <li key={i}><b>{c.field}</b>: {String(c.from ?? '—')} → {String(c.to ?? '—')}</li>)}</ul>
+                    <ul className="mt-2 text-xs">{a.changes.map((c, i) => <li key={i}><b>{c.field}</b>: {showValue(c.from)} → {showValue(c.to)}</li>)}</ul>
                     <p className="mt-1 text-xs text-muted">{a.reason}</p>
                   </li>
                 ))}
@@ -232,7 +247,7 @@ async function RecordPageContent({ params }: PageProps<'/records/[id]'>) {
                   <li key={h.version} className="rounded-md bg-slate-50 p-3 text-xs">
                     <div className="font-medium text-navy">Version {h.version} (replaced {fmtDateTime(h.at)})</div>
                     <div className="mt-1 grid grid-cols-2 gap-1">
-                      {Object.entries(h.data).map(([k, v]) => <div key={k}><span className="text-muted">{k}:</span> {String(v ?? '—')}</div>)}
+                      {Object.entries(h.data).map(([k, v]) => <div key={k}><span className="text-muted">{k}:</span> {showValue(v)}</div>)}
                     </div>
                   </li>
                 ))}

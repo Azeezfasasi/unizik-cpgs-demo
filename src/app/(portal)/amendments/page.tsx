@@ -6,6 +6,7 @@ import { db } from '@/lib/db';
 import { requirePage } from '@/lib/auth';
 import { can } from '@/lib/rbac';
 import { fmtDate, fullName, titleCase } from '@/lib/format';
+import { courseTotals, GRADE_POINTS, semesterGroups, type Letter } from '@/lib/grading';
 import { Amendment } from '@/models';
 import { Alert, Badge, Card, EmptyState, PageHeader, PageSkeleton } from '@/components/ui';
 import { ActionForm, SubmitButton } from '@/components/forms';
@@ -21,6 +22,41 @@ type Row = {
   requestedBy: { _id: Types.ObjectId; name: string }; decidedBy?: { name: string };
   record: { _id: Types.ObjectId; degree: string; student: { matricNo: string; surname: string; otherNames: string } };
 };
+
+type Course = { code: string; title?: string; units?: number; grade?: string; semester?: number };
+
+/** Proposed course results by semester with credit, quality point and GPA totals, as on the result sheet. */
+function CourseChange({ from, to }: { from: Course[]; to: Course[] }) {
+  const all = courseTotals(to);
+  return (
+    <div className="mt-3 space-y-3">
+      <p className="text-sm"><b>Course results:</b> {from.length ? `${from.length} course(s) replaced by` : 'adds'} {to.length} course(s)</p>
+      {semesterGroups(to).map((g) => {
+        const t = courseTotals(g.courses);
+        return (
+          <div key={g.semester ?? 'p'} className="overflow-x-auto rounded-md border border-line">
+            <table className="table">
+              <thead>
+                <tr><th colSpan={5} className="bg-slate-50 text-navy">{g.semester ? `${['First', 'Second', 'Third', 'Fourth'][g.semester - 1]} semester` : 'Project / thesis / dissertation'}</th></tr>
+                <tr><th>Code</th><th>Title</th><th className="text-right">Credit</th><th>Grade</th><th className="text-right">Q-point</th></tr>
+              </thead>
+              <tbody>
+                {g.courses.map((c, i) => (
+                  <tr key={i}>
+                    <td className="font-mono text-xs">{c.code}</td><td>{c.title}</td><td className="text-right">{c.units}</td><td>{c.grade ?? '—'}</td>
+                    <td className="text-right tabular-nums">{c.grade && c.units != null ? c.units * GRADE_POINTS[c.grade as Letter] : ''}</td>
+                  </tr>
+                ))}
+                <tr className="font-semibold"><td colSpan={2}>Total{g.semester && t.gpa != null ? ` · GPA ${t.gpa.toFixed(2)}` : ''}</td><td className="text-right">{t.credits}</td><td /><td className="text-right">{t.points}</td></tr>
+              </tbody>
+            </table>
+          </div>
+        );
+      })}
+      <p className="text-sm"><b>Grand total:</b> {all.credits} credits · {all.points} quality points{all.gpa != null && <> · FCGPA {all.gpa.toFixed(2)}</>}</p>
+    </div>
+  );
+}
 
 export default function AmendmentsPage() {
   return (
@@ -54,14 +90,17 @@ async function AmendmentsPageContent() {
               <div>
                 <Link href={`/records/${a.record._id}`} className="link">{fullName(a.record.student)}</Link>
                 <div className="text-xs text-muted"><span className="font-mono">{a.record.student.matricNo}</span> · {a.record.degree}</div>
-                <div className="mt-3 overflow-x-auto">
+                <div className={`mt-3 overflow-x-auto ${a.changes.some((c) => c.field !== 'courses') ? '' : 'hidden'}`}>
                   <table className="table">
                     <thead><tr><th>Field</th><th>Current</th><th>Proposed</th></tr></thead>
-                    <tbody>{a.changes.map((c, i) => (
+                    <tbody>{a.changes.filter((c) => c.field !== 'courses').map((c, i) => (
                       <tr key={i}><td className="font-medium">{c.field}</td><td className="text-red-700 line-through">{String(c.from ?? '—')}</td><td className="font-medium text-accent">{String(c.to ?? '—')}</td></tr>
                     ))}</tbody>
                   </table>
                 </div>
+                {a.changes.filter((c) => c.field === 'courses').map((c, i) => (
+                  <CourseChange key={i} from={(c.from as Course[] | null) ?? []} to={(c.to as Course[] | null) ?? []} />
+                ))}
                 <p className="mt-3 text-sm"><b>Reason:</b> {a.reason}</p>
                 <p className="mt-1 text-xs text-muted">Requested by {a.requestedBy.name} on {fmtDate(a.createdAt)}</p>
                 {canDecide && !a.requestedBy._id.equals(user.id) && (
