@@ -12,8 +12,10 @@ const PendingContext = createContext<boolean | null>(null);
  * A form bound to a server action that shows its success or error message inline.
  * Submits through a transition so React does not clear the fields when validation fails.
  */
-export function ActionForm({ action, children, className, resetOnSuccess = false, successMessage, confirm, after }: {
+export function ActionForm({ action, children, className, resetOnSuccess = false, successMessage, confirm, after, id }: {
   action: Action; children: ReactNode; className?: string; resetOnSuccess?: boolean;
+  /** For inputs elsewhere on the page that belong to this form (their `form` attribute). */
+  id?: string;
   successMessage?: string; confirm?: string;
   /** Extra fields shown under the result, built from it (e.g. choices the server asks for). */
   after?: (state: ActionState) => ReactNode;
@@ -34,6 +36,7 @@ export function ActionForm({ action, children, className, resetOnSuccess = false
     <PendingContext value={pending}>
       <form
         ref={ref}
+        id={id}
         className={className}
         onSubmit={(e) => {
           e.preventDefault();

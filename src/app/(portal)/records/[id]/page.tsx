@@ -211,6 +211,7 @@ async function RecordPageContent({ params }: PageProps<'/records/[id]'>) {
             <Card title={r.courses.length ? 'Correct course results' : 'Add course results'}>
               <p className="mb-4 text-sm text-muted">
                 Course results by semester, from the Student&rsquo;s Final Result sheet. They print on the transcript once the Provost approves.
+                Many students? Use <Link href="/amendments/course-results" className="link">bulk course results</Link>.
               </p>
               <CourseResultsForm recordId={id} cgpa={r.cgpa} courses={r.courses.map((c) => ({
                 code: c.code, title: c.title ?? undefined, units: c.units ?? undefined, grade: c.grade ?? undefined, semester: c.semester ?? undefined,
