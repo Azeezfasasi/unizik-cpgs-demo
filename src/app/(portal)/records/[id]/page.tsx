@@ -12,10 +12,10 @@ import { boardDetails, fmtDate, fmtDateTime, fullName, titleCase, type BoardFiel
 import { Amendment, GraduandRecord, ResultSheet, StoredFile, Verification } from '@/models';
 import { Alert, Badge, Card, DetailList, PageHeader, StatusBadge, PageSkeleton } from '@/components/ui';
 import { ScanViewer } from '@/components/ScanViewer';
-import { ActionForm, SubmitButton } from '@/components/forms';
 import { issueDocument } from '../../transcripts/actions';
 import { DocumentActions } from '../../transcripts/DocumentActions';
 import { AmendmentForm } from './AmendmentForm';
+import { IssueDocumentForm } from './IssueDocumentForm';
 
 export const metadata: Metadata = { title: 'Graduand record' };
 
@@ -25,7 +25,11 @@ type Rec = BoardFields & {
   sourceFile?: Types.ObjectId; sourcePage?: number; createdAt: Date; updatedAt: Date;
   courses: { code: string; title?: string; units?: number; score?: number; grade?: string; semester?: number }[];
   history: { version: number; data: Record<string, unknown>; at: Date }[];
-  student: { matricNo: string; surname: string; otherNames: string; sex?: string };
+  student: {
+    matricNo: string; surname: string; otherNames: string; sex?: string;
+    phone?: string; email?: string; address?: string; modeOfStudy?: string; dateRegistered?: Date;
+    admission?: { qualification?: string; date?: string; institution?: string }[];
+  };
   department: { _id: Types.ObjectId; name: string; faculty: { name: string } };
   programme: { name: string; degreeType: string }; session: { label: string };
   sheet: { _id: Types.ObjectId; reference: string; status: string; files: Types.ObjectId[] };
@@ -45,7 +49,7 @@ async function RecordPageContent({ params }: PageProps<'/records/[id]'>) {
   if (!Types.ObjectId.isValid(id)) notFound();
   await db();
   const r = await GraduandRecord.findById(id)
-    .populate('student', 'matricNo surname otherNames sex')
+    .populate('student', 'matricNo surname otherNames sex phone email address modeOfStudy dateRegistered admission')
     .populate({ path: 'department', select: 'name faculty', populate: { path: 'faculty', select: 'name' } })
     .populate('programme', 'name degreeType').populate('session', 'label')
     .populate('sheet', 'reference status files')
@@ -96,7 +100,7 @@ async function RecordPageContent({ params }: PageProps<'/records/[id]'>) {
                 <div className="mt-1 text-xl font-semibold text-navy">{r.classOfDegree ? CLASS_LABELS[r.classOfDegree as ClassOfDegree] : '—'}</div>
               </div>
               <div className="col-span-2 rounded-lg bg-slate-100 p-4 sm:col-span-1">
-                <div className="text-xs font-semibold tracking-wide text-muted uppercase">Senate approval</div>
+                <div className="text-xs font-semibold tracking-wide text-muted uppercase">Board approval</div>
                 <div className="mt-1 text-lg font-semibold text-navy">{fmtDate(r.senateApprovalDate)}</div>
               </div>
             </div>
@@ -146,36 +150,12 @@ async function RecordPageContent({ params }: PageProps<'/records/[id]'>) {
 
           {canIssue && r.locked && (
             <Card title="Issue a statement of result or transcript">
-              <ActionForm action={issueDocument.bind(null, id)} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div>
-                  <label className="label" htmlFor="kind">Document</label>
-                  <select id="kind" name="kind" className="input">
-                    <option value="STATEMENT_OF_RESULT">Statement of result</option>
-                    <option value="TRANSCRIPT">Academic transcript</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="label" htmlFor="validDays">Valid for</label>
-                  <select id="validDays" name="validDays" defaultValue="365" className="input">
-                    <option value="90">90 days</option><option value="365">1 year</option><option value="1825">5 years</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="label" htmlFor="issuedTo">Issued to</label>
-                  <input id="issuedTo" name="issuedTo" required placeholder="The graduand, or e.g. Federal Ministry of Health" className="input" />
-                </div>
-                <div>
-                  <label className="label" htmlFor="email">Graduand&rsquo;s email <span className="font-normal text-muted">(optional)</span></label>
-                  <input id="email" name="email" type="email" autoComplete="off" className="input" />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="label" htmlFor="recipients">Also send to <span className="font-normal text-muted">(optional: employers, institutions, embassies…)</span></label>
-                  <textarea id="recipients" name="recipients" rows={2} className="input"
-                    placeholder="hr@employer.com, admissions@university.edu" />
-                  <p className="mt-1 text-xs text-muted">Separate addresses with commas or new lines (up to 10). Each recipient gets their own email with the PDF attached, a download link and the verification code.</p>
-                </div>
-                <div className="sm:col-span-2"><SubmitButton className="btn-accent">Generate document</SubmitButton></div>
-              </ActionForm>
+              <IssueDocumentForm action={issueDocument.bind(null, id)} student={{
+                phone: r.student.phone ?? '', email: r.student.email ?? '', address: r.student.address ?? '',
+                modeOfStudy: r.student.modeOfStudy ?? '',
+                dateRegistered: r.student.dateRegistered ? new Date(r.student.dateRegistered).toISOString().slice(0, 10) : '',
+                admission: (r.student.admission ?? []).map((a) => ({ qualification: a.qualification ?? '', date: a.date ?? '', institution: a.institution ?? '' })),
+              }} />
             </Card>
           )}
 
@@ -192,7 +172,7 @@ async function RecordPageContent({ params }: PageProps<'/records/[id]'>) {
                         {v.revoked ? <Badge tone="danger">Revoked</Badge> : expired ? <Badge>Expired</Badge> : <Badge tone="success">Valid</Badge>}
                       </div>
                       <div className="text-sm">{v.kind === 'TRANSCRIPT' ? 'Transcript' : 'Statement of result'} · <span className="text-muted">to</span> {v.issuedTo}</div>
-                      <div className="text-xs text-muted">Issued {fmtDate(v.createdAt)}</div>
+                      <div className="text-xs text-muted">{v.reference ? `${v.reference} · ` : ''}Issued {fmtDate(v.createdAt)}</div>
                       {canIssue && <DocumentActions id={v._id.toString()} revoked={v.revoked} expired={expired} align="start" />}
                     </li>
                   );
@@ -206,7 +186,7 @@ async function RecordPageContent({ params }: PageProps<'/records/[id]'>) {
                       const expired = v.expiresAt < new Date();
                       return (
                         <tr key={v._id.toString()}>
-                          <td className="font-mono text-xs whitespace-nowrap">{v.code}</td>
+                          <td className="font-mono text-xs whitespace-nowrap">{v.code}{v.reference && <div className="font-sans text-muted">{v.reference}</div>}</td>
                           <td>{v.kind === 'TRANSCRIPT' ? 'Transcript' : 'Statement'}</td>
                           <td>{v.issuedTo}</td>
                           <td className="text-xs">{fmtDate(v.createdAt)}</td>

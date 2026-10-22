@@ -30,7 +30,7 @@ function normalise(field: AmendableField, raw: string) {
   if (field === 'classOfDegree' && !(CLASS_OF_DEGREE as readonly string[]).includes(v)) fail('Invalid class of degree');
   if (DATE_FIELDS.includes(field)) {
     const d = new Date(v);
-    if (isNaN(d.getTime())) fail(field === 'effectiveDate' ? 'Invalid effective date' : 'Invalid Senate date');
+    if (isNaN(d.getTime())) fail(field === 'effectiveDate' ? 'Invalid effective date' : 'Invalid Board approval date');
     if (d > new Date()) fail('The date cannot be in the future');
     return d.toISOString().slice(0, 10);
   }
@@ -62,7 +62,7 @@ export async function requestAmendment(recordId: string, _: ActionState, fd: For
     const reason = String(fd.get('reason') ?? '').trim();
     if (reason.length < 10) fail('Explain the reason for the correction (at least 10 characters)');
     const evidence = String(fd.get('evidence') ?? '');
-    if (!evidence) fail('Upload the evidence (e.g. Senate extract or corrected signed sheet)');
+    if (!evidence) fail('Upload the evidence (e.g. Board extract or corrected signed sheet)');
     const file = await StoredFile.findOne({ _id: evidence, purpose: 'AMENDMENT_EVIDENCE', uploadedBy: user.id }).lean();
     if (!file) missing('Evidence file not found');
 

@@ -101,7 +101,7 @@ const exDocument = {
   createdAt: NOW, verifyUrl: 'https://unizik-cpgs.vercel.app/verify/JK92-CWEU', pdfUrl: '/api/v1/documents/6acd40af9c18c073359430f1/pdf',
 };
 const exAmendment = {
-  id: '6acd40af9c18c073359430f2', record: ID, status: 'PENDING', reason: 'The exams were remarked by the supervisors; see Senate extract.',
+  id: '6acd40af9c18c073359430f2', record: ID, status: 'PENDING', reason: 'The exams were remarked by the supervisors; see Board extract.',
   changes: [{ field: 'classOfDegree', from: 'FAIL', to: 'MERIT' }, { field: 'remarks', from: null, to: 'Merit results' }],
   evidence: '6acd40af9c18c073359430e2', requestedBy: { id: '6acd40af9c18c073359430d4', name: 'Head of Records' }, createdAt: NOW,
 };
@@ -373,7 +373,7 @@ const paths: Json = {
   }) },
   '/records/export': { get: op('Records', 'Export a search as CSV', 'Provost, Head of Records, System Administrator', {
     description: 'Same query parameters as GET /records (without paging); up to 20,000 rows. Audited.',
-    responses: { 200: { description: 'CSV file', content: { 'text/csv': { schema: str(), example: 'Matric No,Surname,Other Names,Sex,Degree,Department,Session,CGPA,Class of Degree,Thesis Title,Senate Approval,Origin,Locked,Version\r\n2022447001,NWANKWO,Ijeoma Blessing,F,M.Sc. Computer Science,Computer Science,2024/2025,4.62,Distinction,Federated learning…,2026-10-01,ONLINE,Yes,1' } } }, ...STD },
+    responses: { 200: { description: 'CSV file', content: { 'text/csv': { schema: str(), example: 'Matric No,Surname,Other Names,Sex,Degree,Department,Session,CGPA,Class of Degree,Thesis Title,Board Approval,Origin,Locked,Version\r\n2022447001,NWANKWO,Ijeoma Blessing,F,M.Sc. Computer Science,Computer Science,2024/2025,4.62,Distinction,Federated learning…,2026-10-01,ONLINE,Yes,1' } } }, ...STD },
   }) },
   '/records/{id}': { get: op('Records', 'Get a graduand record', 'roles with record access, within their unit', { parameters: [pathId('id', 'Record id')], responses: { 200: ok('Record', dataOf(ref('Record')), { data: exRecord }), ...errs(401, 403, 404, 429) } }) },
   '/records/{id}/documents': {
@@ -390,7 +390,7 @@ const paths: Json = {
     get: op('Amendments', 'Amendments for a record', 'Head of Records, Provost, Auditor, System Administrator', { responses: { 200: ok('Amendments', dataOf(arr(ref('Amendment'))), { data: [exAmendment] }), ...STD } }),
     post: op('Amendments', 'Request a correction to a locked record', 'Head of Records', {
       description: 'Upload the evidence first with POST /files (purpose AMENDMENT_EVIDENCE, recordId) and pass its id. One pending amendment per record.',
-      requestBody: jsonBody(ref('AmendmentRequest'), { classOfDegree: 'MERIT', remarks: 'Merit results', reason: 'The exams were remarked by the supervisors; see Senate extract.', evidence: '6acd40af9c18c073359430e2' }),
+      requestBody: jsonBody(ref('AmendmentRequest'), { classOfDegree: 'MERIT', remarks: 'Merit results', reason: 'The exams were remarked by the supervisors; see Board extract.', evidence: '6acd40af9c18c073359430e2' }),
       responses: { 201: actionOk(ref('Amendment'), { message: 'Amendment sent to the Provost for approval.', data: exAmendment }), ...errs(401, 403, 404, 422, 429) },
     }),
   },
@@ -431,7 +431,7 @@ const paths: Json = {
   }) },
   '/sheets/{id}/files/{fileId}': { delete: op('Result sheets', 'Detach a scan', 'the editor of an editable sheet', { description: 'Refused while rows are linked to the scan.', parameters: [pathId('id', 'Sheet id'), pathId('fileId', 'File id')], responses: { 200: actionOk(), ...errs(401, 403, 404, 422, 429) } }) },
   '/sheets/{id}/submit': sheetAction('Submit for approval (online)', 'Department PG Coordinator', 'Requires rows and an attached signed scan, and attest: true.', obj({ attest: bool('Confirms the rows match the signed and stamped result sheet') }, ['attest']), { attest: true }),
-  '/sheets/{id}/decision': sheetAction('Approve or return (online)', 'the officer at the sheet\'s current stage: HOD → Faculty PG Sub-Dean → Head of Records → Provost → Head of Records (Senate date)', 'A comment is required to return. At the final stage, senateDate (YYYY-MM-DD, not in the future) is required and approving locks every record.', obj({ decision: str(undefined, { enum: ['approve', 'return'] }), comment: str(), senateDate: str(undefined, { format: 'date' }) }, ['decision']), { decision: 'approve', comment: 'Checked against the signed sheet' }),
+  '/sheets/{id}/decision': sheetAction('Approve or return (online)', 'the officer at the sheet\'s current stage: HOD → Faculty PG Sub-Dean → Head of Records → Provost → Head of Records (Board approval date)', 'A comment is required to return. At the final stage, senateDate (YYYY-MM-DD, not in the future) is required and approving locks every record.', obj({ decision: str(undefined, { enum: ['approve', 'return'] }), comment: str(), senateDate: str(undefined, { format: 'date' }) }, ['decision']), { decision: 'approve', comment: 'Checked against the signed sheet' }),
   '/sheets/{id}/send-to-qa': sheetAction('Indexing complete: send to QA (legacy)', 'Indexer assigned to the box, or Taskforce Lead', 'Requires at least one row and an attached scan.'),
   '/sheets/{id}/qa': sheetAction('Pass or return QA (legacy)', 'QA Reviewer assigned to the box, or Head of Records; never the sheet\'s indexer', 'Passing requires attest: true; returning requires a comment.', obj({ decision: str(undefined, { enum: ['pass', 'return'] }), comment: str(), attest: bool('Confirms every row was compared with the scan') }, ['decision']), { decision: 'pass', attest: true }),
   '/sheets/{id}/lock': sheetAction('Verify and lock (legacy)', 'Head of Records', 'Only QA-passed sheets. If rows are flagged illegible, acceptIllegible: true is required.', obj({ comment: str(), acceptIllegible: bool() }), { comment: 'Spot-checked 10 rows' }),

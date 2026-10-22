@@ -27,7 +27,7 @@ async function SubmissionsPageContent() {
   const groups = [
     { title: isOfficer ? 'Needs your action' : 'Draft or returned to departments', rows: rows.filter((r) => r.status === 'DRAFT' || r.status === 'RETURNED') },
     { title: 'In approval', rows: rows.filter((r) => !['DRAFT', 'RETURNED', 'SENATE_APPROVED'].includes(r.status)) },
-    { title: 'Senate approved and archived', rows: rows.filter((r) => r.status === 'SENATE_APPROVED') },
+    { title: 'Board approved and archived', rows: rows.filter((r) => r.status === 'SENATE_APPROVED') },
   ];
 
   return (

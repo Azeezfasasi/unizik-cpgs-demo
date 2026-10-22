@@ -52,7 +52,7 @@ export default function Home() {
       <section className="mx-auto grid grid-cols-1 w-full max-w-6xl gap-4 px-4 py-10 sm:gap-6 sm:px-6 sm:py-16 md:grid-cols-3">
         {[
           { t: 'Legacy digitization', d: 'Paper result sheets are scanned to archival standard, indexed, checked by a second officer and locked.', c: 'bg-brand' },
-          { t: 'Online submission', d: 'Departments submit final results online. Each sheet moves through HOD, Faculty, Records, Provost and Senate approval.', c: 'bg-accent' },
+          { t: 'Online submission', d: 'Departments submit final results online. Each sheet moves through HOD, Faculty, Records, Provost and PG Board approval.', c: 'bg-accent' },
           { t: 'Verification', d: 'Every issued statement and transcript carries a QR code and verification code that can be checked here at any time.', c: 'bg-navy' },
         ].map((f) => (
           <div key={f.t} className="card p-5 sm:p-6">

@@ -101,7 +101,7 @@ async function RecordsPageContent({ searchParams }: PageProps<'/records'>) {
           <>
             <div className="overflow-x-auto">
               <table className="table">
-                <thead><tr><th>Matric no</th><th>Name</th><th>Degree</th><th>Session</th><th className="text-right">CGPA</th><th>Class</th><th>Senate</th><th>Status</th></tr></thead>
+                <thead><tr><th>Matric no</th><th>Name</th><th>Degree</th><th>Session</th><th className="text-right">CGPA</th><th>Class</th><th>Board</th><th>Status</th></tr></thead>
                 <tbody>
                   {rows.map((r) => (
                     <tr key={r._id.toString()} className="hover:bg-slate-50">

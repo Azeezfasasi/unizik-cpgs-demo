@@ -53,6 +53,7 @@ export async function buildNav(user: CurrentUser): Promise<NavGroup[]> {
   const admin: NavGroup['items'] = [];
   if (canSee(r, 'user:manage')) admin.push({ href: '/admin/users', label: 'Users', icon: 'users' });
   if (canSee(r, 'structure:manage')) admin.push({ href: '/admin/structure', label: 'Academic structure', icon: 'building' });
+  if (canSee(r, 'documents:settings')) admin.push({ href: '/admin/documents', label: 'Document settings', icon: 'doc' });
   if (canSee(r, 'files:read')) admin.push({ href: '/admin/files', label: 'File storage', icon: 'doc' });
   if (canSee(r, 'apikeys:manage')) admin.push({ href: '/admin/api-keys', label: 'API & integrations', icon: 'building' });
   if (canSee(r, 'audit:read')) admin.push({ href: '/audit', label: 'Audit log', icon: 'shield' });

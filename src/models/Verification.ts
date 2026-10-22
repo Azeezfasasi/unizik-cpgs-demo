@@ -7,6 +7,12 @@ const VerificationSchema = new Schema({
   hmac:      { type: String, required: true },
   recordVersion: { type: Number, required: true },
   issuedTo:  { type: String, required: true },     // requesting party, e.g. an employer or the graduand
+  /** Postal address of the receiving institution, printed on the transcript forwarding letter. */
+  issuedToAddress: String,
+  /** Letter reference printed on the document, e.g. NAU/CPGS/R/ST/001/165 (documents issued before it existed have none). */
+  reference: String,
+  /** Letterhead officers and signatory at the time of issue, so a re-download prints the same letter. */
+  letterhead: Schema.Types.Mixed,
   issuedBy:  { type: Types.ObjectId, ref: 'User', required: true },
   expiresAt: { type: Date, required: true },
   revoked:   { type: Boolean, default: false },

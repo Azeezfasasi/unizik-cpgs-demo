@@ -35,6 +35,8 @@ export const PERMISSIONS = {
   'amendment:request':  ['HEAD_RECORDS'],
   'amendment:approve':  ['PROVOST'],
   'transcript:issue':   ['SUPER_ADMIN', 'HEAD_RECORDS'],
+  /** Letterhead officers, signatory and reference numbers printed on issued documents. */
+  'documents:settings': ['SUPER_ADMIN', 'HEAD_RECORDS'],
   'audit:read':         ['SUPER_ADMIN', 'AUDITOR', 'PROVOST'],
   'files:read':         ['SUPER_ADMIN', 'HEAD_RECORDS', 'PROVOST', 'AUDITOR'],
   'files:manage':       ['SUPER_ADMIN', 'HEAD_RECORDS'],
