@@ -12,6 +12,7 @@ import { Alert, Badge, Card, EmptyState, PageHeader, PageSkeleton } from '@/comp
 import { ActionForm, SubmitButton } from '@/components/forms';
 import { ScanViewer } from '@/components/ScanViewer';
 import { decideAmendment } from './actions';
+import { ApproveSelected } from './ApproveSelected';
 
 export const metadata: Metadata = { title: 'Amendments' };
 
@@ -76,18 +77,24 @@ async function AmendmentsPageContent() {
   const pending = rows.filter((r) => r.status === 'PENDING');
   const done = rows.filter((r) => r.status !== 'PENDING');
   const canDecide = can(user.role, 'amendment:approve');
+  const selectable = pending.filter((a) => !a.requestedBy._id.equals(user.id)).length;
 
   return (
     <>
       <PageHeader
         title="Amendments to locked records"
         description="Corrections are requested by the Head of Records with evidence and approved by the Provost. Approval creates a new record version and revokes documents issued against the old one."
+        actions={can(user.role, 'amendment:request') ? <Link href="/amendments/course-results" className="btn-outline">Bulk course results</Link> : undefined}
       />
       <div className="space-y-6">
         <Card title={`Pending (${pending.length})`} bodyClass={pending.length ? 'divide-y divide-line' : ''}>
+          {canDecide && selectable > 1 && <ApproveSelected count={selectable} />}
           {pending.length ? pending.map((a) => (
             <div key={a._id.toString()} className="grid grid-cols-1 gap-5 p-5 lg:grid-cols-[1fr_1fr]">
               <div>
+                {canDecide && selectable > 1 && !a.requestedBy._id.equals(user.id) && (
+                  <input type="checkbox" name="ids" value={a._id.toString()} form="bulk-approve" aria-label={`Select ${a.record.student.matricNo}`} className="mr-2 accent-brand" />
+                )}
                 <Link href={`/records/${a.record._id}`} className="link">{fullName(a.record.student)}</Link>
                 <div className="text-xs text-muted"><span className="font-mono">{a.record.student.matricNo}</span> · {a.record.degree}</div>
                 <div className={`mt-3 overflow-x-auto ${a.changes.some((c) => c.field !== 'courses') ? '' : 'hidden'}`}>
