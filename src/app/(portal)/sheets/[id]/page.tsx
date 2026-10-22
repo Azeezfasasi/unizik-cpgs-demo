@@ -201,7 +201,7 @@ async function SheetPageContent({ params }: PageProps<'/sheets/[id]'>) {
               <ActionForm action={decideSheet.bind(null, id_)} className="space-y-3">
                 {stage.next === 'SENATE_APPROVED' && (
                   <div>
-                    <label className="label" htmlFor="senateDate">Senate approval date</label>
+                    <label className="label" htmlFor="senateDate">Board approval date</label>
                     <input id="senateDate" name="senateDate" type="date" className="input max-w-xs" />
                     <p className="mt-1 text-xs text-muted">Approving locks every record on this sheet permanently.</p>
                   </div>
@@ -212,7 +212,7 @@ async function SheetPageContent({ params }: PageProps<'/sheets/[id]'>) {
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <SubmitButton name="decision" value="approve" className="btn-accent">
-                    {stage.next === 'SENATE_APPROVED' ? 'Record Senate approval and lock' : 'Approve'}
+                    {stage.next === 'SENATE_APPROVED' ? 'Record Board approval and lock' : 'Approve'}
                   </SubmitButton>
                   <SubmitButton name="decision" value="return" className="btn-outline text-red-700">Return to department</SubmitButton>
                 </div>
@@ -384,7 +384,7 @@ async function SheetPageContent({ params }: PageProps<'/sheets/[id]'>) {
               ['Programme', prog?.name],
               ['Session', session?.label],
               ['Box', batch ? <Link className="link" href={`/digitization/batches/${batch._id}`}>{batch.boxCode}</Link> : '—'],
-              ['Senate approval', fmtDate(sheet.senateApprovalDate)],
+              ['Board approval', fmtDate(sheet.senateApprovalDate)],
               ...(fingerprint ? [['Row fingerprint', (
                 <span key="fp">
                   <span className="font-mono font-semibold text-navy">{fingerprint}</span>

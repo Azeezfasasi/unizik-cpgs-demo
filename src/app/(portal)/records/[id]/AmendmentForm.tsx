@@ -36,7 +36,7 @@ export function AmendmentForm({ recordId, current }: { recordId: string; current
             <input id="a-sup" name="supervisor" defaultValue={current.supervisor} className="input" />
           </div>
           <div>
-            <label className="label" htmlFor="a-senate">Senate approval date</label>
+            <label className="label" htmlFor="a-senate">Board approval date</label>
             <input id="a-senate" name="senateApprovalDate" type="date" defaultValue={current.senateApprovalDate} className="input" />
           </div>
           <div>
@@ -70,7 +70,7 @@ export function AmendmentForm({ recordId, current }: { recordId: string; current
         <SubmitButton className="btn-dark">Send to Provost</SubmitButton>
       </ActionForm>
       <FileUploader purpose="AMENDMENT_EVIDENCE" recordId={recordId} multiple={false}
-        label="Upload evidence (Senate extract, corrected signed sheet)"
+        label="Upload evidence (Board extract, corrected signed sheet)"
         onUploaded={async (id) => { setEvidence(id); return { ok: true }; }} />
     </div>
   );

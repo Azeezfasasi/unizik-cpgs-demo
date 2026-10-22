@@ -60,7 +60,7 @@ async function NewSubmissionPageContent() {
             <li><b className="text-navy">2.</b> Download the CRR template and fill it.</li>
             <li><b className="text-navy">3.</b> Upload it. Every cell is validated before saving.</li>
             <li><b className="text-navy">4.</b> Attach the signed, stamped result sheet (PDF).</li>
-            <li><b className="text-navy">5.</b> Submit. It goes to your HOD, then Faculty PG Sub-Dean, Records, the Provost and finally Senate.</li>
+            <li><b className="text-navy">5.</b> Submit. It goes to your HOD, then Faculty PG Sub-Dean, Records, the Provost and finally the PG Board.</li>
             <li>A returned sheet comes back to you with the reason and keeps its reference and history.</li>
           </ol>
         </Card>

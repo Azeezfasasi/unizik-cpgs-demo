@@ -229,7 +229,7 @@ export async function notifySheet(sheetId: Types.ObjectId | string, comment?: st
     const to = await User.find({ isActive: true, role: 'DEPT_OFFICER', department: sheet.department }).select('name email').lean();
     await sendMail({
       to: to.map((u) => ({ email: u.email, name: u.name })),
-      subject: `Result sheet ${sheet.reference} is Senate approved and archived`,
+      subject: `Result sheet ${sheet.reference} is Board approved and archived`,
       html: `<p>All records on <b>${esc(sheet.reference)}</b> are now locked in the CPGS Results Repository.</p>${link(path, 'View sheet')}`,
     });
   }

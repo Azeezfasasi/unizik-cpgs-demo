@@ -200,7 +200,7 @@ export async function decideSheet(sheetId: string, _: ActionState, fd: FormData)
       let senateDate: Date | undefined;
       if (approve && step.next === 'SENATE_APPROVED') {
         senateDate = new Date(senateRaw);
-        if (!senateRaw || isNaN(senateDate.getTime()) || senateDate > new Date()) fail('Enter the date Senate approved these results');
+        if (!senateRaw || isNaN(senateDate.getTime()) || senateDate > new Date()) fail('Enter the date the PG Board approved these results');
       }
 
       const before = sheet!.status;

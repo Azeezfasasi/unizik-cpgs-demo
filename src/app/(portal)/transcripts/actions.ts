@@ -11,7 +11,9 @@ import { sendMail } from '@/lib/mail';
 import { issueVerification, verificationUrl } from '@/lib/verify';
 import { buildDocumentPdf, documentLink } from '@/lib/documents';
 import type { ActionState } from '@/lib/action-state';
-import { GraduandRecord, Verification } from '@/models';
+import { currentLetterhead } from '@/lib/document-settings';
+import { nextSeq } from '@/models/Counter';
+import { GraduandRecord, Student, Verification } from '@/models';
 
 /** At most this many addresses per send, so the form cannot be used for bulk mail. */
 const MAX_RECIPIENTS = 10;
@@ -19,10 +21,39 @@ const MAX_RECIPIENTS = 10;
 const Issue = z.object({
   kind: z.enum(['STATEMENT_OF_RESULT', 'TRANSCRIPT']),
   issuedTo: z.string().trim().min(3, 'Say who the document is for').max(200),
+  issuedToAddress: z.string().trim().max(400).optional(),
   email: z.string().optional(),
   recipients: z.string().optional(),
   validDays: z.coerce.number().int().min(30).max(3650),
 });
+
+/** Student details printed on the transcript (SPGS Form 044). Blank fields are cleared. */
+const TranscriptDetails = z.object({
+  phone: z.string().trim().max(40),
+  studentEmail: z.union([z.literal(''), z.email('Enter a valid student email address')]),
+  address: z.string().trim().max(300),
+  modeOfStudy: z.enum(['', 'FULL_TIME', 'PART_TIME']),
+  dateRegistered: z.union([z.literal(''), z.iso.date('Enter the date registered as a date')]),
+});
+const ADMISSION_ROWS = 3;
+
+function transcriptDetails(fd: FormData) {
+  const d = TranscriptDetails.parse({
+    phone: String(fd.get('phone') ?? ''), studentEmail: String(fd.get('studentEmail') ?? '').trim().toLowerCase(),
+    address: String(fd.get('address') ?? ''), modeOfStudy: String(fd.get('modeOfStudy') ?? ''),
+    dateRegistered: String(fd.get('dateRegistered') ?? ''),
+  });
+  const admission = Array.from({ length: ADMISSION_ROWS }, (_, i) => ({
+    qualification: String(fd.get(`admQualification${i}`) ?? '').trim().slice(0, 120),
+    date: String(fd.get(`admDate${i}`) ?? '').trim().slice(0, 30),
+    institution: String(fd.get(`admInstitution${i}`) ?? '').trim().slice(0, 160),
+  })).filter((a) => a.qualification || a.date || a.institution);
+  return {
+    phone: d.phone || undefined, email: d.studentEmail || undefined, address: d.address || undefined,
+    modeOfStudy: d.modeOfStudy || undefined, dateRegistered: d.dateRegistered ? new Date(d.dateRegistered) : undefined,
+    admission: admission.length ? admission : undefined,
+  };
+}
 
 /**
  * Email addresses from free text: separated by commas, semicolons, spaces or new lines.
@@ -87,20 +118,39 @@ export async function issueDocument(recordId: string, _: ActionState, fd: FormDa
     const data = Issue.parse(Object.fromEntries(fd));
     const recipients = parseRecipients(data.email, data.recipients);
     await db();
-    const rec = await GraduandRecord.findById(recordId).populate<{ student: { surname: string; otherNames: string } }>('student', 'surname otherNames');
+    const rec = await GraduandRecord.findById(recordId);
     if (!rec) missing('Record not found');
     if (!rec!.locked) fail('Only locked (final) records can be issued');
     if (rec!.illegible) fail('This record is flagged illegible; resolve it first');
 
+    // Transcripts print the student's contact and admission details: save what was entered.
+    if (data.kind === 'TRANSCRIPT') {
+      const details = transcriptDetails(fd);
+      const student = await Student.findById(rec!.student);
+      if (!student) missing('Student not found');
+      const before = Object.fromEntries(Object.keys(details).map((k) => [k, student!.get(k)]));
+      const changed = Object.keys(details).filter((k) => JSON.stringify(before[k] ?? null) !== JSON.stringify(details[k as keyof typeof details] ?? null));
+      if (changed.length) {
+        student!.set(details);
+        await student!.save();
+        await audit(user, 'student.update', 'Student', student!._id.toString(),
+          Object.fromEntries(changed.map((k) => [k, before[k]])), Object.fromEntries(changed.map((k) => [k, details[k as keyof typeof details]])));
+      }
+    }
+
+    const settings = await currentLetterhead();
+    const prefix = data.kind === 'TRANSCRIPT' ? settings.transcriptRefPrefix : settings.statementRefPrefix;
+    const reference = `${prefix}/${await nextSeq(data.kind === 'TRANSCRIPT' ? 'doc-transcript' : 'doc-statement')}`;
     const v = await issueVerification({
       recordId, recordVersion: rec!.version, kind: data.kind, issuedTo: data.issuedTo, userId: user.id, validDays: data.validDays,
+      issuedToAddress: data.kind === 'TRANSCRIPT' ? data.issuedToAddress || undefined : undefined, reference, letterhead: settings,
     });
-    await audit(user, 'document.issue', 'Verification', v.id, undefined, { record: recordId, kind: data.kind, code: v.code, issuedTo: data.issuedTo });
+    await audit(user, 'document.issue', 'Verification', v.id, undefined, { record: recordId, kind: data.kind, code: v.code, reference, issuedTo: data.issuedTo });
 
     const mail = recipients.length ? await emailDocument(user, v.id, recipients) : null;
     return {
       ok: true,
-      message: `Issued with verification code ${v.code}.${mail ? ` ${emailSummary(mail)}` : ''}`,
+      message: `Issued ${reference} with verification code ${v.code}.${mail ? ` ${emailSummary(mail)}` : ''}`,
       data: { code: v.code, id: v.id, ...pdfLinks(v.id) },
     };
   });

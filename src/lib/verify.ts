@@ -27,7 +27,7 @@ export function verificationUrl(code: string) {
 
 export async function issueVerification(opts: {
   recordId: string; recordVersion: number; kind: 'STATEMENT_OF_RESULT' | 'TRANSCRIPT';
-  issuedTo: string; userId: string; validDays?: number;
+  issuedTo: string; userId: string; validDays?: number; issuedToAddress?: string; reference?: string; letterhead?: unknown;
 }) {
   for (let i = 0; i < 5; i++) {
     const code = newCode();
@@ -35,7 +35,7 @@ export async function issueVerification(opts: {
       const v = await Verification.create({
         record: opts.recordId, kind: opts.kind, code,
         hmac: sign(code, opts.recordId, opts.recordVersion), recordVersion: opts.recordVersion,
-        issuedTo: opts.issuedTo, issuedBy: opts.userId,
+        issuedTo: opts.issuedTo, issuedBy: opts.userId, issuedToAddress: opts.issuedToAddress, reference: opts.reference, letterhead: opts.letterhead,
         expiresAt: new Date(Date.now() + (opts.validDays ?? 365) * 864e5),
       });
       return v;

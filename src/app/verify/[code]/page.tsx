@@ -60,7 +60,7 @@ async function Result({ params }: { params: Promise<{ code: string }> }) {
           ['Degree', r.degree],
           ['Class of degree', r.classOfDegree],
           ['Session', r.session],
-          ['Senate approval', fmtDate(r.senateApprovalDate)],
+          ['Board approval', fmtDate(r.senateApprovalDate)],
           ['Document', r.kind],
           ['Issued', fmtDate(r.issuedAt)],
           [r.status === 'REVOKED' ? 'Revoked' : 'Valid until', fmtDate(r.status === 'REVOKED' ? r.revokedAt : r.expiresAt)],

@@ -23,7 +23,7 @@ export const GET = handle(async (req: Request) => {
   const rows = await findRecords(filter).sort({ 'session': 1 }).limit(MAX_ROWS).lean<RecordRow[]>();
   await audit(user, 'record.export', 'GraduandRecord', undefined, undefined, { ...sp, rows: rows.length });
 
-  const header = ['Matric No', 'Surname', 'Other Names', 'Sex', 'Degree', 'Department', 'Session', 'CGPA', 'Class of Degree', 'Sem 1 GPA', 'Sem 2 GPA', 'Sem 3 GPA', 'Sem 4 GPA', 'Project', 'Effective Date', 'Board Meeting', 'Thesis Title', 'Senate Approval', 'Origin', 'Locked', 'Version'];
+  const header = ['Matric No', 'Surname', 'Other Names', 'Sex', 'Degree', 'Department', 'Session', 'CGPA', 'Class of Degree', 'Sem 1 GPA', 'Sem 2 GPA', 'Sem 3 GPA', 'Sem 4 GPA', 'Project', 'Effective Date', 'Board Meeting', 'Thesis Title', 'Board Approval', 'Origin', 'Locked', 'Version'];
   const lines = [header.join(',')].concat(rows.map((r) => [
     r.student.matricNo, r.student.surname, r.student.otherNames, r.student.sex, r.degree, r.department.name, r.session.label,
     r.cgpa?.toFixed(2), r.classOfDegree ? CLASS_LABELS[r.classOfDegree as ClassOfDegree] : '',
