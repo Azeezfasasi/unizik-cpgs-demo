@@ -38,15 +38,17 @@ function stamp(sheet: Sheet, user: CurrentUser, stage: string, action: 'SUBMIT' 
 
 // ---------------------------------------------------------------- create
 
-const CreateOnline = z.object({ programme: objectId, session: objectId });
+/** `degree` (PGD, MSc, …) is optional for API callers; when given it must be the programme's. */
+const CreateOnline = z.object({ programme: objectId, session: objectId, degree: z.string().optional() });
 
 export async function createOnlineSheet(_: ActionState, fd: FormData): Promise<ActionState> {
   let id = '';
   const res = await run(async () => {
     const user = await requirePermission('submission:create');
-    const { programme, session } = CreateOnline.parse(Object.fromEntries(fd));
+    const { programme, session, degree } = CreateOnline.parse(Object.fromEntries(fd));
     const prog = await Programme.findById(programme).lean();
     if (!prog || !user.department || !prog.department.equals(user.department)) fail('Pick a programme in your department');
+    if (degree && prog!.degreeType !== degree) fail(`${prog!.name} is a ${prog!.degreeType} programme, not ${degree}`);
     const open = await ResultSheet.findOne({ origin: 'ONLINE', programme, session, status: { $nin: ['SENATE_APPROVED'] } }).lean();
     if (open) fail(`There is already an open sheet for this programme and session (${open.reference})`);
     const sheet = await ResultSheet.create({
