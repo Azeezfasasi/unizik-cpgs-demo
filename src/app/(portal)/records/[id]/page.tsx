@@ -16,6 +16,7 @@ import { issueDocument } from '../../transcripts/actions';
 import { DocumentActions } from '../../transcripts/DocumentActions';
 import { AmendmentForm } from './AmendmentForm';
 import { IssueDocumentForm } from './IssueDocumentForm';
+import { degreeLabel, describeDegree } from '@/lib/degrees';
 import { CourseResultsForm } from './CourseResultsForm';
 
 export const metadata: Metadata = { title: 'Graduand record' };
@@ -81,7 +82,7 @@ async function RecordPageContent({ params }: PageProps<'/records/[id]'>) {
       <PageHeader
         back={{ href: '/records', label: 'Search' }}
         title={fullName(r.student)}
-        description={<><span className="font-mono">{r.student.matricNo}</span> · {r.degree} · {r.session.label}</>}
+        description={<><span className="font-mono">{r.student.matricNo}</span> · {degreeLabel(r.programme?.name ?? r.degree, r.programme?.degreeType)} · {r.session.label}</>}
         actions={<>
           {r.locked ? <Badge tone="dark">Locked · v{r.version}</Badge> : <Badge tone="warning">In progress</Badge>}
           <Badge tone={r.origin === 'ONLINE' ? 'brand' : 'neutral'}>{r.origin === 'ONLINE' ? 'Online' : 'Legacy'}</Badge>
@@ -111,7 +112,8 @@ async function RecordPageContent({ params }: PageProps<'/records/[id]'>) {
             <DetailList items={[
               ['Faculty', r.department.faculty?.name],
               ['Department', r.department.name],
-              ['Programme', r.programme.name],
+              ['Degree', r.programme ? describeDegree(r.programme.name, r.programme.degreeType, r.department.name).degree : r.degree],
+              ['Programme', r.programme?.name],
               ['Session', r.session.label],
               ...boardDetails(r),
               ['Sex', r.student.sex],

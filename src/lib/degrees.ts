@@ -35,6 +35,16 @@ export function describeDegree(programmeName: string, degreeType: string, depart
   };
 }
 
+/**
+ * Short degree and programme for lists and headings, e.g. "MA Language Studies". A programme
+ * name that already starts with its degree ("M.Sc. Computer Science") is shown as it is.
+ */
+export function degreeLabel(programmeName: string, degreeType?: string | null) {
+  const m = programmeName.trim().match(/^([A-Za-z.]+(?:\s?[A-Za-z]{1,3}\.)?)\s+(.+)$/);
+  if ((m && LONG[key(m[1])]) || !degreeType) return programmeName;
+  return `${LONG[key(degreeType)]?.[1] ?? degreeType} ${programmeName}`;
+}
+
 /** "15th", "22nd": day of month with its ordinal suffix. */
 export function ordinal(n: number) {
   const s = n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] ?? 'th';
