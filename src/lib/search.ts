@@ -49,11 +49,13 @@ export type RecordRow = {
   semesterGpas?: number[]; projectGrade?: number; effectiveDate?: Date; boardMeeting?: string;
   student: { matricNo: string; surname: string; otherNames: string; sex?: string };
   department: { name: string; code: string }; session: { label: string };
+  programme?: { name: string; degreeType: string } | null;
 };
 
 export function findRecords(filter: object) {
   return GraduandRecord.find(filter)
     .populate('student', 'matricNo surname otherNames sex')
     .populate('department', 'name code')
+    .populate('programme', 'name degreeType')
     .populate('session', 'label');
 }

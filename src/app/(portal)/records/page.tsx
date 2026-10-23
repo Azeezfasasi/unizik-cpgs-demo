@@ -6,6 +6,7 @@ import { requirePage, scopedDepartmentIds } from '@/lib/auth';
 import { can } from '@/lib/rbac';
 import { recordFilter, findRecords, type RecordRow, type SearchParams } from '@/lib/search';
 import { CLASS_LABELS, CLASS_OF_DEGREE } from '@/lib/grading';
+import { degreeLabel } from '@/lib/degrees';
 import { fmtDate, fullName } from '@/lib/format';
 import { audit } from '@/lib/audit';
 import { AcademicSession, Department, Faculty, GraduandRecord, Programme } from '@/models';
@@ -108,7 +109,7 @@ async function RecordsPageContent({ searchParams }: PageProps<'/records'>) {
                       <td><Link href={`/records/${r._id}`} className="link font-mono text-xs">{r.student.matricNo}</Link></td>
                       <td>{fullName(r.student)}</td>
                       <td>
-                        {r.degree}
+                        {degreeLabel(r.programme?.name ?? r.degree, r.programme?.degreeType)}
                         <div className="text-xs text-muted">{r.department.name}</div>
                       </td>
                       <td>{r.session.label}</td>
