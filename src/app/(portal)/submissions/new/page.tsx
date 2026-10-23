@@ -8,6 +8,8 @@ import { AcademicSession, Department, Programme } from '@/models';
 import { Alert, Card, PageHeader, PageSkeleton } from '@/components/ui';
 import { ActionForm, SubmitButton } from '@/components/forms';
 import { createOnlineSheet } from '../../sheets/actions';
+import { DEGREE_TYPES } from '@/models/Programme';
+import { ProgrammePicker } from './ProgrammePicker';
 
 export const metadata: Metadata = { title: 'New submission' };
 
@@ -34,17 +36,13 @@ async function NewSubmissionPageContent() {
     <>
       <PageHeader title="New result submission" description={dept?.name} back={{ href: '/submissions', label: 'Submissions' }} />
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_22rem]">
-        <Card title="1. Choose programme and session">
+        <Card title="1. Choose degree, programme and session">
           {!programmes.length ? (
             <Alert tone="warning">No programmes are registered for your department. Ask the system administrator to add them.</Alert>
           ) : (
             <ActionForm action={createOnlineSheet} className="space-y-4">
-              <div>
-                <label className="label" htmlFor="programme">Programme</label>
-                <select id="programme" name="programme" required className="input">
-                  {programmes.map((p) => <option key={p._id.toString()} value={p._id.toString()}>{p.name}</option>)}
-                </select>
-              </div>
+              <ProgrammePicker degreeOrder={DEGREE_TYPES}
+                programmes={programmes.map((p) => ({ id: p._id.toString(), name: p.name, degreeType: p.degreeType }))} />
               <div>
                 <label className="label" htmlFor="session">Session</label>
                 <select id="session" name="session" required className="input max-w-xs">
