@@ -14,7 +14,8 @@ const AuditLogSchema = new Schema({
   userAgent: String,
   prevHash:  { type: String, required: true },
   hash:      { type: String, required: true },
-}, { versionKey: false });
+  // Keep empty objects (e.g. a `before` of {}): the entry must be stored exactly as it was hashed.
+}, { versionKey: false, minimize: false });
 
 function appendOnly() {
   throw new Error('AuditLog is append-only');
