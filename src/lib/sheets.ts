@@ -5,6 +5,7 @@ import { Department, GraduandRecord, Programme, ResultSheet, Student, User } fro
 import type { ResultSheetDoc } from '@/models/ResultSheet';
 import { classConsistency, expectedClass, semesterGpaWarnings, type ClassOfDegree } from './grading';
 import { getGradingBands } from './settings';
+import { getDegrees } from './degree-list';
 import type { GraduandRow } from './validators';
 import { FLOW, STATUS_LABELS, type FlowStage } from './workflow';
 import { sendMail, link } from './mail';
@@ -22,6 +23,7 @@ export type RowCache = {
   dept: Map<string, Promise<{ matricPattern?: string | null } | null>>;
   programme: Map<string, Promise<{ name: string; degreeType: string } | null>>;
   bands?: Promise<Awaited<ReturnType<typeof getGradingBands>>>;
+  degrees?: ReturnType<typeof getDegrees>;
   skipCount: boolean;
 };
 export const rowCache = (): RowCache => ({ dept: new Map(), programme: new Map(), skipCount: true });
@@ -33,6 +35,12 @@ function cached<T>(map: Map<string, Promise<T>> | undefined, key: string, load: 
   return map.get(key)!;
 }
 const bandsOf = (cache?: RowCache) => (cache ? (cache.bands ??= getGradingBands()) : getGradingBands());
+/** Whether a degree carries a class of degree (from Academic structure → Degrees; unknown codes do). */
+async function classifiedDegree(degreeType: string | undefined, cache?: RowCache) {
+  if (!degreeType) return true;
+  const list = await (cache ? (cache.degrees ??= getDegrees()) : getDegrees());
+  return list.find((d) => d.code === degreeType)?.classified ?? true;
+}
 
 /** Runs fn over items, `size` at a time (independent rows: different students). */
 export async function inChunks<T, R>(items: T[], size: number, fn: (item: T, index: number) => Promise<R>) {
@@ -69,7 +77,7 @@ export async function checkRow(sheet: SheetLike, row: GraduandRow, degreeType?: 
   }
 
   const { bands } = await bandsOf(cache);
-  const c = classConsistency(row.cgpa, row.classOfDegree, degreeType, bands);
+  const c = classConsistency(row.cgpa, row.classOfDegree, await classifiedDegree(degreeType, cache), bands);
   if (c) warnings.push(c);
   if (row.courses.some((x) => x.score != null && x.grade && gradeMismatch(x.score, x.grade))) {
     warnings.push('One or more course grades do not match their scores');
@@ -120,7 +128,7 @@ export async function upsertGraduand(sheet: SheetLike, row: GraduandRow, extra: 
 /** Result fields of a row, with the class of degree worked out from the CGPA when it was left out. */
 async function rowFields(row: GraduandRow, degreeType: string, cache?: RowCache) {
   let cls: ClassOfDegree | undefined = row.classOfDegree;
-  if (!cls) cls = degreeType === 'PhD' ? 'NOT_APPLICABLE' : expectedClass(row.cgpa!, (await bandsOf(cache)).bands);
+  if (!cls) cls = !(await classifiedDegree(degreeType, cache)) ? 'NOT_APPLICABLE' : expectedClass(row.cgpa!, (await bandsOf(cache)).bands);
   return {
     cgpa: row.cgpa, classOfDegree: cls, thesisTitle: row.thesisTitle, supervisor: row.supervisor,
     semesterGpas: row.semesterGpas.length ? row.semesterGpas : undefined, projectGrade: row.projectGrade,

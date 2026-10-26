@@ -13,6 +13,7 @@ import { FLOW, LEGACY_STEPS, ONLINE_STEPS, STATUS_LABELS, type FlowStage } from 
 import { boardLine, fmtDate, fmtDateTime, fullName, minutesSince } from '@/lib/format';
 import { classConsistency } from '@/lib/grading';
 import { getGradingBands } from '@/lib/settings';
+import { getDegrees } from '@/lib/degree-list';
 import { AcademicSession, Department, DigitizationBatch, GraduandRecord, Programme, ResultSheet, StoredFile } from '@/models';
 import { Alert, Badge, Card, ClassBadge, DetailList, PageHeader, StatusBadge, Steps, PageSkeleton } from '@/components/ui';
 import { ScanViewer } from '@/components/ScanViewer';
@@ -52,6 +53,7 @@ async function SheetPageContent({ params }: PageProps<'/sheets/[id]'>) {
       .lean(),
     getGradingBands(),
   ]);
+  const degrees = await getDegrees();
   // Same code that is printed in the footer of the sheet for signing.
   const fingerprint = records.length ? rowFingerprint(await snapshotRows(sheet._id)) : null;
   records.sort((a, b) => a.student.matricNo.localeCompare(b.student.matricNo));
@@ -341,7 +343,7 @@ async function SheetPageContent({ params }: PageProps<'/sheets/[id]'>) {
                   <thead><tr><th>Matric no</th><th>Name</th><th className="text-right">CGPA</th><th>Class</th>{!online && <th>Page</th>}<th /></tr></thead>
                   <tbody>
                     {records.map((r) => {
-                      const warn = classConsistency(r.cgpa, r.classOfDegree as never, prog?.degreeType, grading.bands);
+                      const warn = classConsistency(r.cgpa, r.classOfDegree as never, degrees.find((g) => g.code === prog?.degreeType)?.classified ?? true, grading.bands);
                       return (
                         <tr key={r._id.toString()}>
                           <td className="font-mono text-xs">

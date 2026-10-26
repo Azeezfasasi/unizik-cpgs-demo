@@ -12,14 +12,30 @@ const LONG: Record<string, [string, string]> = {
   MIT: ['Master of Information Technology', 'MIT'], MPM: ['Master of Project Management', 'MPM'],
 };
 
-const key = (s: string) => s.replace(/[.\s]/g, '').toUpperCase();
+export const degreeKey = (s: string) => s.replace(/[.\s]/g, '').toUpperCase();
+const key = degreeKey;
+
+/** A degree as managed in Academic structure. */
+export type DegreeDef = { code: string; name: string; aliases?: string[]; classified?: boolean };
+
+/** Spelling → [full name, code]: the built-in names, overridden by the managed degrees. */
+function names(degrees?: DegreeDef[]) {
+  if (!degrees?.length) return LONG;
+  const out: Record<string, [string, string]> = { ...LONG };
+  for (const d of degrees) {
+    for (const s of [d.code, ...(d.aliases ?? [])]) out[key(s)] = [d.name, d.code];
+  }
+  return out;
+}
 
 /**
  * Splits a programme name into its degree and subject: "M.Sc. Agricultural Extension" →
  * Master of Science (MSc), "Agricultural Extension". When the name carries no recognised degree
  * abbreviation, the programme's degree type is used and the whole name is the subject.
+ * `degrees` (the managed list) supplies names for degrees added in Academic structure.
  */
-export function describeDegree(programmeName: string, degreeType: string, department: string) {
+export function describeDegree(programmeName: string, degreeType: string, department: string, degrees?: DegreeDef[]) {
+  const LONG = names(degrees);
   const m = programmeName.trim().match(/^([A-Za-z.]+(?:\s?[A-Za-z]{1,3}\.)?)\s+(.+)$/);
   const fromName = m && LONG[key(m[1])];
   const [long, abbr] = fromName ?? LONG[key(degreeType)] ?? [degreeType, degreeType];
@@ -39,7 +55,8 @@ export function describeDegree(programmeName: string, degreeType: string, depart
  * Short degree and programme for lists and headings, e.g. "MA Language Studies". A programme
  * name that already starts with its degree ("M.Sc. Computer Science") is shown as it is.
  */
-export function degreeLabel(programmeName: string, degreeType?: string | null) {
+export function degreeLabel(programmeName: string, degreeType?: string | null, degrees?: DegreeDef[]) {
+  const LONG = names(degrees);
   const m = programmeName.trim().match(/^([A-Za-z.]+(?:\s?[A-Za-z]{1,3}\.)?)\s+(.+)$/);
   if ((m && LONG[key(m[1])]) || !degreeType) return programmeName;
   return `${LONG[key(degreeType)]?.[1] ?? degreeType} ${programmeName}`;

@@ -17,6 +17,7 @@ import { DocumentActions } from '../../transcripts/DocumentActions';
 import { AmendmentForm } from './AmendmentForm';
 import { IssueDocumentForm } from './IssueDocumentForm';
 import { degreeLabel, describeDegree } from '@/lib/degrees';
+import { getDegrees } from '@/lib/degree-list';
 import { CourseResultsForm } from './CourseResultsForm';
 
 export const metadata: Metadata = { title: 'Graduand record' };
@@ -75,6 +76,7 @@ async function RecordPageContent({ params }: PageProps<'/records/[id]'>) {
   ]);
   const pendingAmendment = amendments.some((a) => a.status === 'PENDING');
   const fileList = files.map((f) => ({ id: f._id.toString(), name: f.originalName ?? 'scan' }));
+  const degrees = await getDegrees();
   const units = r.courses.reduce((a, c) => a + (c.units ?? 0), 0);
 
   return (
@@ -82,7 +84,7 @@ async function RecordPageContent({ params }: PageProps<'/records/[id]'>) {
       <PageHeader
         back={{ href: '/records', label: 'Search' }}
         title={fullName(r.student)}
-        description={<><span className="font-mono">{r.student.matricNo}</span> · {degreeLabel(r.programme?.name ?? r.degree, r.programme?.degreeType)} · {r.session.label}</>}
+        description={<><span className="font-mono">{r.student.matricNo}</span> · {degreeLabel(r.programme?.name ?? r.degree, r.programme?.degreeType, degrees)} · {r.session.label}</>}
         actions={<>
           {r.locked ? <Badge tone="dark">Locked · v{r.version}</Badge> : <Badge tone="warning">In progress</Badge>}
           <Badge tone={r.origin === 'ONLINE' ? 'brand' : 'neutral'}>{r.origin === 'ONLINE' ? 'Online' : 'Legacy'}</Badge>
@@ -112,7 +114,7 @@ async function RecordPageContent({ params }: PageProps<'/records/[id]'>) {
             <DetailList items={[
               ['Faculty', r.department.faculty?.name],
               ['Department', r.department.name],
-              ['Degree', r.programme ? describeDegree(r.programme.name, r.programme.degreeType, r.department.name).degree : r.degree],
+              ['Degree', r.programme ? describeDegree(r.programme.name, r.programme.degreeType, r.department.name, degrees).degree : r.degree],
               ['Programme', r.programme?.name],
               ['Session', r.session.label],
               ...boardDetails(r),

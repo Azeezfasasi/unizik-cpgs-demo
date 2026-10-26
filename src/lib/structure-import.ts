@@ -2,7 +2,7 @@ import 'server-only';
 import * as XLSX from 'xlsx';
 import type { ClientSession } from 'mongoose';
 import { Department, Faculty, Programme } from '@/models';
-import { DEGREE_TYPES } from '@/models/Programme';
+import { findDegree, getDegrees } from './degree-list';
 import type { CellError } from './action-state';
 
 /**
@@ -14,7 +14,6 @@ export const STRUCTURE_COLUMNS = [
   'Faculty', 'Faculty Code', 'Department', 'Department Code', 'Programme', 'Programme Code', 'Degree Type', 'Matric Pattern',
 ] as const;
 type Column = (typeof STRUCTURE_COLUMNS)[number];
-type DegreeType = (typeof DEGREE_TYPES)[number];
 
 const SHEET = 'Structure';
 const EXAMPLE = [
@@ -22,12 +21,6 @@ const EXAMPLE = [
   ['Faculty of Agriculture', 'AGR', 'Agricultural Extension', 'AEX', 'Ph.D. Agricultural Extension', 'PHD-AEX', 'PhD', ''],
   ['Faculty of Agriculture', 'AGR', 'Crop Science', 'CRS', '', '', '', '^20\\d{8}$'],
 ];
-
-/** "M.Sc", "m.sc.", "LL.M", "Ph.D" → MSc, LLM, PhD. */
-function degreeType(v: string): DegreeType | null {
-  const k = v.replace(/[.\s]/g, '').toLowerCase();
-  return DEGREE_TYPES.find((d) => d.toLowerCase() === k) ?? null;
-}
 
 const str = (v: unknown) => (v == null ? '' : String(v).trim());
 
@@ -52,7 +45,7 @@ export function buildStructureFile(format: 'xlsx' | 'csv', rows?: string[][]) {
     ['Department / Department Code', 'Give both or neither. Code 2–10 characters, unique across the university, e.g. AEX.'],
     ['Programme', 'Optional; needs a department on the same row. A programme is recognised by its department, name and degree type.'],
     ['Programme Code', 'Optional. Leave it blank, or reuse one code (e.g. the department code) for several programmes: a unique code such as MSC-AEX or PHD-AEX is generated.'],
-    ['Degree Type', `Required with a programme: ${DEGREE_TYPES.join(', ')} (M.Sc., LL.M., Ph.D. also accepted).`],
+    ['Degree Type', 'Required with a programme: a degree code from Academic structure → Degrees (e.g. PGD, MSc, PhD), or another spelling listed there (M.Sc., Ph.D.).'],
     ['Matric Pattern', 'Optional regular expression for the department\'s matric numbers, e.g. ^20\\d{8}$.'],
     [],
     ['Examples'],
@@ -86,7 +79,8 @@ type Row = {
   line: number;
   faculty: { name: string; code: string };
   department?: { name: string; code: string; matricPattern?: string };
-  programme?: { name: string; code: string; degreeType: DegreeType };
+  /** degreeType is the text in the file until planStructureImport resolves it to a degree code. */
+  programme?: { name: string; code: string; degreeType: string };
 };
 
 /** Reads the file into rows, reporting cell problems with the row numbers people see in Excel. */
@@ -135,12 +129,12 @@ export function parseStructureFile(buf: ArrayBuffer, fileName: string): { rows: 
 
     const pName = cell(r, 'Programme'), pCode = cell(r, 'Programme Code').toUpperCase(), dtRaw = cell(r, 'Degree Type');
     const hasProg = !!(pName || pCode || dtRaw);
-    const dt = dtRaw ? degreeType(dtRaw) : null;
+    const dt = dtRaw || null;
     if (hasProg) {
       if (!hasDept) err('Department', 'A programme needs its department on the same row');
       if (pName.length < 3) err('Programme', 'Programme name is required (at least 3 characters)');
       if (pCode && (pCode.length < 2 || pCode.length > 20)) err('Programme Code', 'Programme code must be 2–20 characters, or leave it blank to generate one');
-      if (!dt) err('Degree Type', `Degree type must be one of ${DEGREE_TYPES.join(', ')}`);
+      if (!dt) err('Degree Type', 'Degree type is required with a programme');
     }
     if (errors.length > before) return;
     rows.push({
@@ -157,14 +151,14 @@ export function parseStructureFile(buf: ArrayBuffer, fileName: string): { rows: 
 export type StructurePlan = {
   faculties: { name: string; code: string }[];
   departments: { name: string; code: string; facultyCode: string; matricPattern?: string }[];
-  programmes: { name: string; code: string; degreeType: DegreeType; departmentCode: string }[];
+  programmes: { name: string; code: string; degreeType: string; departmentCode: string }[];
   existing: { faculties: number; departments: number; programmes: number };
   /** Programme codes the import made up because the cell was blank or the code was already taken. */
   generatedCodes: { line: number; name: string; given: string; code: string }[];
 };
 
 /** "MSc" + "REE" → "MSC-REE"; keeps a base that already starts with the degree prefix. */
-function programmeCode(degree: DegreeType, base: string, used: Set<string>) {
+function programmeCode(degree: string, base: string, used: Set<string>) {
   const prefix = degree.toUpperCase();
   const stem = (base.startsWith(`${prefix}-`) ? base : `${prefix}-${base}`).slice(0, 17);
   let code = stem;
@@ -191,6 +185,16 @@ export async function planStructureImport(rows: Row[]) {
   const progKey = (dept: string, name: string, degree: string) => `${dept}|${name.trim().toLowerCase()}|${degree}`;
   const progBy = new Map(programmes.map((p) => [progKey(p.department.code, p.name, p.degreeType), p]));
   const usedCodes = new Set(programmes.map((p) => p.code));
+
+  // Degree types must be degrees in Academic structure → Degrees (any of their spellings).
+  const degrees = await getDegrees();
+  for (const r of rows) {
+    if (!r.programme) continue;
+    const d = findDegree(r.programme.degreeType, degrees);
+    if (d) r.programme.degreeType = d.code;
+    else errors.push({ sheet: SHEET, row: r.line, column: 'Degree Type', message: `Unknown degree "${r.programme.degreeType}": use ${degrees.map((x) => x.code).join(', ')}, or add it under Academic structure → Degrees` });
+  }
+  if (errors.length) return { plan: { faculties: [], departments: [], programmes: [], existing: { faculties: 0, departments: 0, programmes: 0 }, generatedCodes: [] } as StructurePlan, errors, warnings };
 
   const plan: StructurePlan = { faculties: [], departments: [], programmes: [], existing: { faculties: 0, departments: 0, programmes: 0 }, generatedCodes: [] };
   const seenF = new Map<string, { name: string; line: number }>();

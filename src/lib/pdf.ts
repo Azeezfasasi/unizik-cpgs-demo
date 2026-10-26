@@ -2,7 +2,7 @@ import 'server-only';
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFImage, type PDFPage, type RGB } from 'pdf-lib';
 import QRCode from 'qrcode';
 import { fmtDate } from './format';
-import { describeDegree, letterDate, monthYear } from './degrees';
+import { describeDegree, letterDate, monthYear, type DegreeDef } from './degrees';
 import { UNIZIK_LOGO_PNG } from './pdf-logo';
 import type { DocumentSettings } from './document-settings';
 
@@ -33,6 +33,8 @@ export type DocumentData = {
   };
   programme: string;
   degreeType: string;
+  /** The managed degrees (Academic structure), for the full degree name. */
+  degrees?: DegreeDef[];
   department: string;
   faculty: string;
   session: string;
@@ -299,7 +301,7 @@ function statement(c: Ctx) {
   text(page, 'HIGHER DEGREE EXAMINATION RESULT', M, y, c.bold, 11.5, { underline: true });
   y -= 28;
 
-  const deg = describeDegree(d.programme, d.degreeType, d.department);
+  const deg = describeDegree(d.programme, d.degreeType, d.department, d.degrees);
   const meeting = d.boardMeeting ? `${d.boardMeeting.replace(/\s*(PG\s*)?Board(\s*Meeting)?$/i, '')} ` : '';
   const held = d.boardApprovalDate ? ` held on ${letterDate(d.boardApprovalDate)}` : '';
   y = paragraph(page, [
@@ -390,7 +392,7 @@ function transcriptForm(c: Ctx) {
     const lw = text(page, `${label}: `, x, yy, c.bold, SIZE);
     text(page, truncate(value ?? '', c.font, SIZE, max - lw), x + lw, yy, c.font, SIZE);
   };
-  const deg = describeDegree(d.programme, d.degreeType, d.department);
+  const deg = describeDegree(d.programme, d.degreeType, d.department, d.degrees);
   const rows: [string, string | null | undefined, string?, (string | null | undefined)?][] = [
     ['Name', `${s.surname.toUpperCase()}, ${s.otherNames.toUpperCase()}`, 'Sex', s.sex === 'F' ? 'Female' : s.sex === 'M' ? 'Male' : ''],
     ['Faculty', d.faculty.replace(/^Faculty of\s+/i, ''), 'Session', d.session],

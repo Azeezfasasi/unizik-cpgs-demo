@@ -3,6 +3,7 @@ export { default as User } from './User';
 export { default as Faculty } from './Faculty';
 export { default as Department } from './Department';
 export { default as Programme } from './Programme';
+export { default as Degree } from './Degree';
 export { default as AcademicSession } from './AcademicSession';
 export { default as Student } from './Student';
 export { default as StoredFile } from './StoredFile';

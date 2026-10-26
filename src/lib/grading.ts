@@ -31,11 +31,11 @@ export function expectedClass(cgpa: number, bands: Band[] = DEFAULT_BANDS): Clas
   return bands.find((b) => cgpa >= b.min)?.cls ?? 'FAIL';
 }
 
-/** Returns a warning message when CGPA and class of degree disagree, or null. */
-export function classConsistency(cgpa: number | undefined | null, cls: ClassOfDegree | undefined | null, degreeType?: string,
+/** Returns a warning message when CGPA and class of degree disagree, or null. `classified` false: the degree has no class (e.g. PhD). */
+export function classConsistency(cgpa: number | undefined | null, cls: ClassOfDegree | undefined | null, classified = true,
   bands: Band[] = DEFAULT_BANDS) {
   if (cgpa == null || !cls || cls === 'NOT_APPLICABLE') return null;
-  if (degreeType === 'PhD') return null;
+  if (!classified) return null;
   const exp = expectedClass(cgpa, bands);
   return exp === cls ? null : `CGPA ${cgpa.toFixed(2)} normally gives ${CLASS_LABELS[exp]}, not ${CLASS_LABELS[cls]}`;
 }
