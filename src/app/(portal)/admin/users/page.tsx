@@ -9,7 +9,10 @@ import { fmtDateTime } from '@/lib/format';
 import { Department, Faculty, User } from '@/models';
 import { Badge, Card, EmptyState, PageHeader, PageSkeleton, Pagination } from '@/components/ui';
 import { ActionForm, SubmitButton } from '@/components/forms';
-import { createUser, resetCredentials, setUserActive, updateUser } from '../actions';
+import { createUser, importUsers, resetCredentials, setUserActive, updateUser } from '../actions';
+
+// Creating up to 200 accounts (password hashing and one email each) takes longer than the default limit.
+export const maxDuration = 300;
 
 export const metadata: Metadata = { title: 'Users' };
 
@@ -268,6 +271,24 @@ async function UsersPageContent({ searchParams }: PageProps<'/admin/users'>) {
             {unitSelects()}
             <SubmitButton className="btn-primary w-full">Create account</SubmitButton>
           </ActionForm>
+
+          <div className="mt-6 space-y-3 border-t border-line pt-5">
+            <div className="text-sm font-semibold text-navy">Bulk add staff</div>
+            <p className="text-xs text-muted">
+              Send the template to faculties and departments to fill in (one row per staff member), then upload it here.
+              Each new account gets an email with its temporary password. People who already have an account are skipped.
+            </p>
+            <a href="/api/templates/users" className="btn-outline w-full py-1.5 text-xs">Download staff template (Excel)</a>
+            <ActionForm action={importUsers} className="space-y-2">
+              <label className="label" htmlFor="users-file">Filled template (.xlsx or .csv)</label>
+              <input id="users-file" name="file" type="file" required accept=".xlsx,.xls,.csv" className="input" />
+              <div className="grid grid-cols-2 gap-2">
+                <SubmitButton name="mode" value="check" className="btn-outline" pendingText="Checking…">Check only</SubmitButton>
+                <SubmitButton name="mode" value="import" pendingText="Creating…">Create accounts</SubmitButton>
+              </div>
+              <p className="text-xs text-muted">Every row is checked first; if any row has a problem, no accounts are created. Up to 200 staff per file.</p>
+            </ActionForm>
+          </div>
         </Card>
       </div>
     </>
