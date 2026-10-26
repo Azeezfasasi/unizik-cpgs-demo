@@ -13,7 +13,8 @@ import {
 import { expectedClass } from '../src/lib/grading';
 import type { Role } from '../src/lib/rbac';
 
-if (existsSync('.env.local')) process.loadEnvFile('.env.local');
+// Same files as Next.js: .env.local first, then .env (a value already set is never overwritten).
+for (const f of ['.env.local', '.env']) if (existsSync(f)) process.loadEnvFile(f);
 const DEMO = process.argv.includes('--demo');
 
 // Faculties and a representative set of departments and PG programmes at UNIZIK.

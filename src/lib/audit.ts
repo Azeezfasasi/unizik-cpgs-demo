@@ -99,12 +99,17 @@ export async function verifyAuditChain() {
   let prev = 'GENESIS', expectedSeq = 1, checked = 0;
   const cursor = AuditLog.find().sort({ seq: 1 }).lean().cursor();
   for await (const e of cursor) {
-    const recomputed = computeHash({
+    const hashWith = (before: unknown, after: unknown) => computeHash({
       seq: e.seq, at: e.at, actor: e.actor?.toString(), action: e.action, entity: e.entity,
-      entityId: e.entityId, before: e.before, after: e.after, prevHash: e.prevHash,
+      entityId: e.entityId, before, after, prevHash: e.prevHash,
     });
+    // Entries saved before empty objects were kept lost a `before`/`after` of {} on save. Hashing
+    // them with {} restored proves exactly that (an empty object holds nothing that could be hidden).
+    const matches = e.hash === hashWith(e.before, e.after)
+      || (('before' in e && 'after' in e) ? false
+        : [[e.before ?? {}, e.after], [e.before, e.after ?? {}], [e.before ?? {}, e.after ?? {}]].some(([b, a]) => e.hash === hashWith(b, a)));
     if (e.seq !== expectedSeq) return { ok: false as const, brokenAt: expectedSeq, checked, reason: 'missing' as ChainBreak };
-    if (e.prevHash !== prev || e.hash !== recomputed) return { ok: false as const, brokenAt: e.seq, checked, reason: 'altered' as ChainBreak };
+    if (e.prevHash !== prev || !matches) return { ok: false as const, brokenAt: e.seq, checked, reason: 'altered' as ChainBreak };
     prev = e.hash; expectedSeq++; checked++;
   }
   const head = await AuditHead.findById('head').lean();

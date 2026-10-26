@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 import { db } from '@/lib/db';
 import { requirePage } from '@/lib/auth';
 import { AcademicSession, Department, Faculty, Programme } from '@/models';
-import { DEGREE_TYPES } from '@/models/Programme';
+import { getDegrees, type DegreeItem } from '@/lib/degree-list';
 import { CLASS_LABELS } from '@/lib/grading';
 import { getGradingBands } from '@/lib/settings';
 import { describeUsage, usageMap } from '@/lib/structure';
@@ -12,11 +12,36 @@ import { Alert, Card, PageHeader, PageSkeleton } from '@/components/ui';
 import { ActionForm, SubmitButton } from '@/components/forms';
 import { EditPanel } from '@/components/EditPanel';
 import {
-  createDepartment, createFaculty, createProgramme, createSession, deleteDepartment, deleteFaculty, deleteProgramme,
-  deleteSession, importStructure, saveGradingBands, updateDepartment, updateFaculty, updateProgramme, updateSession,
+  createDegree, createDepartment, createFaculty, createProgramme, createSession, deleteDegree, deleteDepartment, deleteFaculty, deleteProgramme,
+  deleteSession, importStructure, saveGradingBands, updateDegree, updateDepartment, updateFaculty, updateProgramme, updateSession,
 } from '../actions';
 
 export const metadata: Metadata = { title: 'Academic structure' };
+
+/** Fields of a degree, for adding one or editing it in place. */
+function DegreeFields({ degree, codeLocked }: { degree?: DegreeItem; codeLocked?: boolean }) {
+  return (
+    <>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-[7rem_1fr]">
+        <input name="code" defaultValue={degree?.code} required placeholder="MEng" aria-label="Degree code" className="input font-mono"
+          readOnly={codeLocked} title={codeLocked ? 'Programmes use this code, so it cannot change' : undefined} />
+        <input name="name" defaultValue={degree?.name} required placeholder="Master of Engineering" aria-label="Full name" className="input" />
+      </div>
+      <input name="aliases" defaultValue={degree?.aliases.join(', ')} placeholder="Other spellings, comma separated: M.Eng., MENG" aria-label="Other spellings" className="input" />
+      <div className="flex flex-wrap items-center gap-4 text-sm">
+        <label className="flex items-center gap-2">
+          <input type="checkbox" name="classified" defaultChecked={degree ? degree.classified : true} className="accent-brand" />
+          Has a class of degree (Distinction, Credit…)
+        </label>
+        {degree && (
+          <label className="flex items-center gap-2 text-xs text-muted">
+            Order <input name="order" type="number" min="0" max="999" defaultValue={degree.order} aria-label="Display order" className="input w-20 py-1" />
+          </label>
+        )}
+      </div>
+    </>
+  );
+}
 
 export default function StructurePage() {
   return (
@@ -29,7 +54,7 @@ export default function StructurePage() {
 async function StructurePageContent() {
   await requirePage('structure:manage');
   await db();
-  const [faculties, departments, programmes, sessions, grading, facUse, depUse, progUse, sesUse] = await Promise.all([
+  const [faculties, departments, programmes, sessions, grading, facUse, depUse, progUse, sesUse, degrees] = await Promise.all([
     Faculty.find().sort({ name: 1 }).lean(),
     Department.find().sort({ name: 1 }).lean(),
     Programme.find().sort({ name: 1 }).lean(),
@@ -39,7 +64,11 @@ async function StructurePageContent() {
     usageMap('department'),
     usageMap('programme'),
     usageMap('session'),
+    getDegrees(),
   ]);
+  const degreeUse = new Map<string, number>();
+  for (const p of programmes) degreeUse.set(p.degreeType, (degreeUse.get(p.degreeType) ?? 0) + 1);
+  const degreeOptions = degrees.map((g) => <option key={g.code} value={g.code}>{g.code} ({g.name})</option>);
   const usage = (m: Map<string, Record<string, number>>, id: unknown) => {
     const u = m.get(String(id));
     return u && Object.keys(u).length ? describeUsage(u) : undefined;
@@ -174,7 +203,8 @@ async function StructurePageContent() {
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                       <input name="code" defaultValue={p.code} required aria-label="Programme code" className="input font-mono uppercase" />
                       <select name="degreeType" defaultValue={p.degreeType} aria-label="Degree type" className="input">
-                        {DEGREE_TYPES.map((d) => <option key={d}>{d}</option>)}
+                        {degreeOptions}
+                        {!degrees.some((g) => g.code === p.degreeType) && <option value={p.degreeType}>{p.degreeType} (not in Degrees)</option>}
                       </select>
                     </div>
                     <select name="department" defaultValue={p.department.toString()} aria-label="Department" className="input">{deptOptions}</select>
@@ -188,8 +218,41 @@ async function StructurePageContent() {
             <select name="department" required aria-label="Department" className="input sm:col-span-2">{deptOptions}</select>
             <input name="name" required placeholder="M.Sc. Agricultural Extension" aria-label="Programme name" className="input sm:col-span-2" />
             <input name="code" required placeholder="MSC-AEX" aria-label="Programme code" className="input font-mono uppercase" />
-            <select name="degreeType" aria-label="Degree type" className="input">{DEGREE_TYPES.map((d) => <option key={d}>{d}</option>)}</select>
+            <select name="degreeType" aria-label="Degree type" className="input">{degreeOptions}</select>
             <SubmitButton className="btn-outline sm:col-span-2">Add programme</SubmitButton>
+          </ActionForm>
+        </Card>
+
+        <Card title={`Degrees (${degrees.length})`}>
+          <p className="mb-3 text-xs text-muted">
+            The degrees programmes can award. The full name prints on statements and transcripts; other spellings
+            (e.g. M.Eng., MENG) are recognised in imports and PG Board lists.
+          </p>
+          <ul className="mb-5 max-h-128 space-y-0.5 overflow-auto pr-1 text-sm">
+            {degrees.map((g) => {
+              const n = degreeUse.get(g.code) ?? 0;
+              return (
+                <li key={g.id}>
+                  <EditPanel
+                    itemLabel={`${g.code} (${g.name})`} inUse={n ? `${n} programme${n === 1 ? '' : 's'}` : undefined}
+                    update={updateDegree.bind(null, g.id)} remove={deleteDegree.bind(null, g.id)}
+                    summary={
+                      <span className="flex justify-between gap-2">
+                        <span><span className="font-mono text-xs font-semibold text-navy">{g.code}</span> {g.name}</span>
+                        <span className="text-xs whitespace-nowrap text-muted">{n} prog.{g.classified ? '' : ' · no class'}</span>
+                      </span>
+                    }
+                  >
+                    <DegreeFields degree={g} codeLocked={n > 0} />
+                  </EditPanel>
+                </li>
+              );
+            })}
+          </ul>
+          <ActionForm action={createDegree} className="space-y-2 border-t border-line pt-4" resetOnSuccess>
+            <div className="text-sm font-semibold text-navy">Add degree</div>
+            <DegreeFields />
+            <SubmitButton className="btn-outline w-full">Add degree</SubmitButton>
           </ActionForm>
         </Card>
 

@@ -2,7 +2,7 @@ import 'server-only';
 import * as XLSX from 'xlsx';
 import { Types, type ClientSession } from 'mongoose';
 import { Department, Faculty, GraduandRecord, Programme, Student } from '@/models';
-import { DEGREE_TYPES } from '@/models/Programme';
+import { getDegrees, type DegreeItem } from './degree-list';
 import { GraduandRowSchema, type GraduandRow } from './validators';
 import type { CellError } from './action-state';
 
@@ -259,9 +259,8 @@ function nameFits(list: string, name: string) {
 const initialsOf = (s: string) => s.toUpperCase().replace(/&/g, ' ').replace(/[^A-Z]+/g, ' ').split(' ')
   .filter((w) => w && !STOP.has(w)).map((w) => w[0]).join('');
 
-type DegreeType = (typeof DEGREE_TYPES)[number];
-/** Programme-type spellings on board lists, with the label used to name a new programme. */
-const DEGREES: Record<string, { type: DegreeType; label: string }> = {
+/** Built-in programme-type spellings on board lists, with the label used to name a new programme. */
+const BUILTIN_DEGREES: Record<string, { type: string; label: string }> = {
   PGD: { type: 'PGD', label: 'PGD' }, PGDE: { type: 'PGD', label: 'PGDE' }, PGDIP: { type: 'PGD', label: 'PGD' },
   MA: { type: 'MA', label: 'M.A.' }, MSC: { type: 'MSc', label: 'M.Sc.' }, MED: { type: 'MEd', label: 'M.Ed.' },
   MBA: { type: 'MBA', label: 'MBA' }, LLM: { type: 'LLM', label: 'LL.M.' }, MPHIL: { type: 'MPhil', label: 'M.Phil.' },
@@ -272,7 +271,25 @@ const DEGREES: Record<string, { type: DegreeType; label: string }> = {
   MPHARM: { type: 'MSc', label: 'M.Pharm.' }, MCOM: { type: 'MSc', label: 'M.Com.' }, MURP: { type: 'MSc', label: 'MURP' },
   MIT: { type: 'MSc', label: 'MIT' }, MPM: { type: 'MSc', label: 'MPM' }, MPS: { type: 'MSc', label: 'MPS' },
 };
-const degreeOf = (text: string) => DEGREES[compact(text)] ?? null;
+/**
+ * Spelling → degree for this import: the built-in spellings of degrees that exist, plus every managed
+ * degree's code and other spellings (Academic structure → Degrees), which take precedence.
+ */
+function degreeSpellings(degrees: DegreeItem[]) {
+  const codes = new Set(degrees.map((d) => d.code));
+  const out: Record<string, { type: string; label: string }> = {};
+  for (const [k, v] of Object.entries(BUILTIN_DEGREES)) if (codes.has(v.type)) out[k] = v;
+  for (const d of degrees) {
+    const label = d.aliases.find((a) => a.includes('.')) ?? d.code;
+    for (const sp of [d.code, ...d.aliases]) {
+      const k = compact(sp);
+      if (!k) continue;
+      // A built-in spelling keeps its label (MENG → "M.Eng."); otherwise the dotted spelling or the code.
+      out[k] = { type: d.code, label: BUILTIN_DEGREES[k]?.label ?? label };
+    }
+  }
+  return out;
+}
 
 /** "LIBRARY & INFORMATION SCIENCE" → "Library & Information Science" (mixed-case text is kept). */
 function titleCase(s: string) {
@@ -307,7 +324,7 @@ export type ProgrammeChoice = {
 export type StructureAdditions = {
   faculties: { _id: Types.ObjectId; name: string; code: string }[];
   departments: { _id: Types.ObjectId; name: string; code: string; faculty: Types.ObjectId; facultyName: string }[];
-  programmes: { _id: Types.ObjectId; name: string; code: string; degreeType: DegreeType; department: Types.ObjectId; departmentName: string }[];
+  programmes: { _id: Types.ObjectId; name: string; code: string; degreeType: string; department: Types.ObjectId; departmentName: string }[];
 };
 
 /**
@@ -320,7 +337,9 @@ export type StructureAdditions = {
 export async function resolveBoardRows(rows: BoardRow[], allowedDepartments: Types.ObjectId[] | null,
   picked: Map<number, string> = new Map(), addMissing = false) {
   const errors: CellError[] = [];
-  const [faculties, allDepartments, programmes] = await Promise.all([Faculty.find().lean(), Department.find().lean(), Programme.find().lean()]);
+  const [faculties, allDepartments, programmes, degrees] = await Promise.all([Faculty.find().lean(), Department.find().lean(), Programme.find().lean(), getDegrees()]);
+  const spellings = degreeSpellings(degrees);
+  const degreeOf = (text: string) => spellings[compact(text)] ?? null;
   const departments = allowedDepartments ? allDepartments.filter((d) => allowedDepartments.some((a) => a.equals(d._id))) : allDepartments;
   const facKey = new Map(faculties.map((f) => [String(f._id), nameKey(f.name)]));
   const byKey = new Map<string, typeof departments>();
@@ -435,7 +454,7 @@ export async function resolveBoardRows(rows: BoardRow[], allowedDepartments: Typ
 
     const deg = degreeOf(r.degreeText);
     if (!deg) {
-      once(`g:${compact(r.degreeText)}`, { ...at, column: 'PROG.', message: `Unknown programme type "${r.degreeText}"; use ${DEGREE_TYPES.join(', ')} (PGDE, M.Eng., MLIS, MPH also work)` });
+      once(`g:${compact(r.degreeText)}`, { ...at, column: 'PROG.', message: `Unknown programme type "${r.degreeText}"; use ${degrees.map((d) => d.code).join(', ')}, or add it under Academic structure → Degrees` });
       continue;
     }
     let progs = programmes.filter((p) => p.department.equals(dept!._id) && p.degreeType === deg.type);

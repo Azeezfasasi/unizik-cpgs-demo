@@ -7,6 +7,7 @@ import { can } from '@/lib/rbac';
 import { recordFilter, findRecords, type RecordRow, type SearchParams } from '@/lib/search';
 import { CLASS_LABELS, CLASS_OF_DEGREE } from '@/lib/grading';
 import { degreeLabel } from '@/lib/degrees';
+import { getDegrees } from '@/lib/degree-list';
 import { fmtDate, fullName } from '@/lib/format';
 import { audit } from '@/lib/audit';
 import { AcademicSession, Department, Faculty, GraduandRecord, Programme } from '@/models';
@@ -41,6 +42,7 @@ async function RecordsPageContent({ searchParams }: PageProps<'/records'>) {
   const searched = Object.entries(sp).some(([k, v]) => k !== 'page' && v);
   const filter = await recordFilter(user, sp);
   const page = Math.max(1, parseInt(sp.page ?? '1') || 1);
+  const degrees = await getDegrees();
   const [total, rows] = await Promise.all([
     GraduandRecord.countDocuments(filter),
     findRecords(filter).sort({ updatedAt: -1 }).skip((page - 1) * PAGE_SIZE).limit(PAGE_SIZE).lean<RecordRow[]>(),
@@ -109,7 +111,7 @@ async function RecordsPageContent({ searchParams }: PageProps<'/records'>) {
                       <td><Link href={`/records/${r._id}`} className="link font-mono text-xs">{r.student.matricNo}</Link></td>
                       <td>{fullName(r.student)}</td>
                       <td>
-                        {degreeLabel(r.programme?.name ?? r.degree, r.programme?.degreeType)}
+                        {degreeLabel(r.programme?.name ?? r.degree, r.programme?.degreeType, degrees)}
                         <div className="text-xs text-muted">{r.department.name}</div>
                       </td>
                       <td>{r.session.label}</td>

@@ -2,18 +2,16 @@
 
 import { useState } from 'react';
 
-const DEGREE_NAMES: Record<string, string> = {
-  PGD: 'PGD (Postgraduate Diploma)', MA: 'MA (Master of Arts)', MSc: 'MSc (Master of Science)', MEd: 'MEd (Master of Education)',
-  MBA: 'MBA (Master of Business Administration)', LLM: 'LLM (Master of Laws)', MPhil: 'MPhil (Master of Philosophy)', PhD: 'PhD (Doctor of Philosophy)',
-};
-
 /** Degree first, then the department's programmes of that degree. */
-export function ProgrammePicker({ programmes, degreeOrder }: {
+export function ProgrammePicker({ programmes, degrees: all }: {
   programmes: { id: string; name: string; degreeType: string }[];
-  /** Degree types in display order. */
-  degreeOrder: readonly string[];
+  /** The managed degrees, in display order. */
+  degrees: { code: string; name: string }[];
 }) {
-  const degrees = degreeOrder.filter((d) => programmes.some((p) => p.degreeType === d));
+  // The department's degrees in the managed order; any not in the list (yet) come last.
+  const codes = [...new Set([...all.map((g) => g.code), ...programmes.map((p) => p.degreeType)])];
+  const degrees = codes.filter((d) => programmes.some((p) => p.degreeType === d));
+  const label = (d: string) => { const g = all.find((x) => x.code === d); return g ? `${g.code} (${g.name})` : d; };
   const [degree, setDegree] = useState(degrees[0] ?? '');
   const list = programmes.filter((p) => p.degreeType === degree);
 
@@ -22,7 +20,7 @@ export function ProgrammePicker({ programmes, degreeOrder }: {
       <div>
         <label className="label" htmlFor="degree">Degree</label>
         <select id="degree" name="degree" required className="input max-w-md" value={degree} onChange={(e) => setDegree(e.target.value)}>
-          {degrees.map((d) => <option key={d} value={d}>{DEGREE_NAMES[d] ?? d}</option>)}
+          {degrees.map((d) => <option key={d} value={d}>{label(d)}</option>)}
         </select>
       </div>
       <div>
