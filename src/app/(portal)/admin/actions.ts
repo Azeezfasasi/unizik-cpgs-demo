@@ -16,6 +16,7 @@ import type { ActionState } from '@/lib/action-state';
 import { AcademicSession, Department, Faculty, Programme, User } from '@/models';
 import Degree from '@/models/Degree';
 import { findDegree, getDegrees } from '@/lib/degree-list';
+import { planUserImport } from '@/lib/user-import';
 import Setting from '@/models/Setting';
 import { describeUsage, usageOf, type StructureKind } from '@/lib/structure';
 import { getGradingBands, GRADING_KEY } from '@/lib/settings';
@@ -56,14 +57,84 @@ export async function createUser(_: ActionState, fd: FormData): Promise<ActionSt
       passwordHash: await bcrypt.hash(pwd, 12), mustChangePassword: true,
     });
     await audit(admin, 'user.create', 'User', u.id, undefined, { email: u.email, role: u.role, ...unit });
-    await sendMail({
-      to: [{ email: u.email, name: u.name }],
-      subject: 'Your CPGS Results Repository account',
-      html: `<p>Dear ${esc(u.name)},</p><p>An account has been created for you as <b>${esc(ROLE_LABELS[data.role])}</b>.</p>
+    await sendWelcome(u.name, u.email, data.role, pwd);
+    return { ok: true, message: `Account created for ${u.email}.`, data: { tempPassword: pwd } };
+  });
+}
+
+/** The new-account email with the temporary password. */
+function sendWelcome(name: string, email: string, role: Role, pwd: string) {
+  return sendMail({
+    to: [{ email, name }],
+    subject: 'Your CPGS Results Repository account',
+    html: `<p>Dear ${esc(name)},</p><p>An account has been created for you as <b>${esc(ROLE_LABELS[role])}</b>.</p>
 <p>Temporary password: <code style="font-size:16px">${esc(pwd)}</code></p>
 <p>You will be asked to choose a new password and set up an authenticator app when you first sign in.</p>${link('/login', 'Sign in')}`,
-    });
-    return { ok: true, message: `Account created for ${u.email}.`, data: { tempPassword: pwd } };
+  });
+}
+
+/**
+ * Bulk staff accounts from a spreadsheet. "Check only" validates every row; "Create" makes the
+ * accounts (all rows must be valid) and emails each person their temporary password. People
+ * who already have an account are skipped.
+ */
+export async function importUsers(_: ActionState, fd: FormData): Promise<ActionState> {
+  return run(async () => {
+    const admin = await requirePermission('user:manage');
+    const file = fd.get('file');
+    if (!(file instanceof File) || !file.size) fail('Choose the filled staff template (.xlsx or .csv)');
+    const f = file as File;
+    if (!/\.(xlsx|xls|csv)$/i.test(f.name)) fail('Upload the template as an Excel (.xlsx) or CSV (.csv) file');
+    if (f.size > 5 * 1024 * 1024) fail('File is larger than 5 MB');
+    await db();
+    const { rows, existing, errors } = await planUserImport(await f.arrayBuffer(), f.name);
+    const skipped = existing.map((e) => `Row ${e.line}: ${e.email} already has an account, so it was left unchanged.`);
+    if (errors.length) {
+      return { ok: false, message: `${errors.length} problem(s) found. No accounts were created.`, errors: errors.slice(0, 200), warnings: skipped };
+    }
+    const byRole = Object.entries(rows.reduce<Record<string, number>>((a, r) => ({ ...a, [ROLE_LABELS[r.role]]: (a[ROLE_LABELS[r.role]] ?? 0) + 1 }), {}))
+      .map(([role, n]) => `${n} ${role}`).join(', ');
+    if (fd.get('mode') === 'check') {
+      return {
+        ok: true,
+        message: rows.length ? `Check passed: ${rows.length} account(s) would be created (${byRole}). Nothing was saved yet.` : 'Nothing to create: everyone in the file already has an account.',
+        warnings: skipped,
+      };
+    }
+    if (!rows.length) return { ok: true, message: 'Nothing to create: everyone in the file already has an account.', warnings: skipped };
+
+    let created = 0;
+    const notEmailed: string[] = [];
+    const failed: string[] = [];
+    // A few at a time: password hashing and email sending are the slow parts.
+    for (let i = 0; i < rows.length; i += 4) {
+      await Promise.all(rows.slice(i, i + 4).map(async (r) => {
+        const pwd = tempPassword();
+        const unit = { department: r.department?.id, faculty: r.faculty?.id };
+        try {
+          const u = await User.create({
+            name: r.name, email: r.email, role: r.role, ...unit,
+            passwordHash: await bcrypt.hash(pwd, 12), mustChangePassword: true,
+          });
+          created++;
+          await audit(admin, 'user.create', 'User', u.id, undefined, { email: u.email, role: u.role, ...unit, bulk: f.name });
+          const mail = await sendWelcome(r.name, r.email, r.role, pwd);
+          if (!mail.sent) notEmailed.push(`${r.email} (${mail.reason})`);
+        } catch (e) {
+          failed.push(`Row ${r.line}: ${r.email}: ${(e as { code?: number }).code === 11000 ? 'an account with this email was just created' : 'could not be created'}`);
+        }
+      }));
+    }
+    const warnings = [
+      ...failed,
+      ...(notEmailed.length ? [`Welcome email not sent to ${notEmailed.length} account(s): ${notEmailed.join(', ')}. For each, use Manage → Reset password and give them the new temporary password in person.`] : []),
+      ...skipped,
+    ];
+    return {
+      ok: created > 0,
+      message: `${created} account(s) created${created - notEmailed.length > 0 ? ` and ${created - notEmailed.length} welcome email(s) sent` : ''}.`,
+      warnings,
+    };
   });
 }
 
