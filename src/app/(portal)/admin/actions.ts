@@ -14,7 +14,8 @@ import { ROLE_LABELS, type Role } from '@/lib/rbac';
 import { UserCreateSchema, objectId } from '@/lib/validators';
 import type { ActionState } from '@/lib/action-state';
 import { AcademicSession, Department, Faculty, Programme, User } from '@/models';
-import { DEGREE_TYPES } from '@/models/Programme';
+import Degree from '@/models/Degree';
+import { findDegree, getDegrees } from '@/lib/degree-list';
 import Setting from '@/models/Setting';
 import { describeUsage, usageOf, type StructureKind } from '@/lib/structure';
 import { getGradingBands, GRADING_KEY } from '@/lib/settings';
@@ -196,14 +197,22 @@ export async function createDepartment(_: ActionState, fd: FormData): Promise<Ac
   });
 }
 
+/** The managed degree's code for a code or spelling ("m.sc" → MSc); fails on an unknown degree. */
+async function degreeCode(text: string) {
+  const d = findDegree(text, await getDegrees());
+  if (!d) fail(`Unknown degree "${text}". Add it under Degrees first.`);
+  return d!.code;
+}
+
 export async function createProgramme(_: ActionState, fd: FormData): Promise<ActionState> {
   return run(async () => {
     const admin = await requirePermission('structure:manage');
     await db();
     const d = z.object({
       name: z.string().trim().min(3), code: z.string().trim().min(2).max(20),
-      degreeType: z.enum(DEGREE_TYPES), department: objectId,
+      degreeType: z.string().trim().min(1, 'Choose the degree'), department: objectId,
     }).parse(Object.fromEntries(fd));
+    d.degreeType = await degreeCode(d.degreeType);
     const p = await Programme.create(d);
     await audit(admin, 'structure.programme_create', 'Programme', p.id, undefined, d);
     return { ok: true, message: `${p.name} added.` };
@@ -303,8 +312,9 @@ export async function updateProgramme(id: string, _: ActionState, fd: FormData):
     const admin = await requirePermission('structure:manage');
     await db();
     const d = z.object({
-      name: z.string().trim().min(3), code: z.string().trim().min(2).max(20), degreeType: z.enum(DEGREE_TYPES), department: objectId,
+      name: z.string().trim().min(3), code: z.string().trim().min(2).max(20), degreeType: z.string().trim().min(1, 'Choose the degree'), department: objectId,
     }).parse(Object.fromEntries(fd));
+    d.degreeType = await degreeCode(d.degreeType);
     const p = await Programme.findById(id);
     if (!p) missing('Programme not found');
     if (!(await Department.exists({ _id: d.department }))) missing('Department not found');
@@ -381,5 +391,71 @@ export async function saveGradingBands(_: ActionState, fd: FormData): Promise<Ac
     await Setting.findByIdAndUpdate(GRADING_KEY, { $set: { value: bands, updatedBy: admin.id } }, { upsert: true });
     await audit(admin, 'structure.grading_update', 'Setting', GRADING_KEY, before, bands);
     return { ok: true, message: 'Grading bands saved. Indexing and submission checks use them from now on.' };
+  });
+}
+
+// ---------------------------------------------------------------- degrees
+
+const DegreeForm = z.object({
+  code: z.string().trim().regex(/^[A-Za-z][A-Za-z.]{1,11}$/, 'Code: 2–12 letters, e.g. MEng'),
+  name: z.string().trim().min(5, 'Enter the full name, e.g. Master of Engineering').max(120),
+  aliases: z.string().trim().max(300).optional(),
+  classified: z.string().optional(),
+  order: z.coerce.number().int().min(0).max(999).optional(),
+});
+
+/** Code, full name, other spellings and class-of-degree setting; spellings may not clash with another degree. */
+async function readDegree(fd: FormData, selfId?: string) {
+  const d = DegreeForm.parse(Object.fromEntries(fd));
+  const code = d.code.replace(/\./g, '');
+  const aliases = [...new Set((d.aliases ?? '').split(',').map((a) => a.trim()).filter(Boolean))].slice(0, 12);
+  const others = (await getDegrees()).filter((x) => x.id !== selfId);
+  for (const s of [code, ...aliases]) {
+    const clash = findDegree(s, others);
+    if (clash) fail(`"${s}" is already used by ${clash.code} (${clash.name})`);
+  }
+  return { code, name: d.name, aliases, classified: d.classified === 'on', order: d.order };
+}
+
+export async function createDegree(_: ActionState, fd: FormData): Promise<ActionState> {
+  return run(async () => {
+    const admin = await requirePermission('structure:manage');
+    await db();
+    const d = await readDegree(fd);
+    const last = await Degree.findOne().sort({ order: -1 }).select('order').lean();
+    const created = await Degree.create({ ...d, order: d.order ?? (last?.order ?? 0) + 1 });
+    await audit(admin, 'structure.degree_create', 'Degree', created.id, undefined, d);
+    return { ok: true, message: `${d.code} (${d.name}) added. It can now be chosen for programmes.` };
+  });
+}
+
+export async function updateDegree(id: string, _: ActionState, fd: FormData): Promise<ActionState> {
+  return run(async () => {
+    const admin = await requirePermission('structure:manage');
+    await db();
+    const deg = await Degree.findById(id);
+    if (!deg) missing('Degree not found');
+    const d = await readDegree(fd, id);
+    const used = await Programme.countDocuments({ degreeType: deg!.code });
+    if (d.code !== deg!.code && used) fail(`${used} programme(s) use ${deg!.code}, so its code cannot change. Edit the name or spellings instead.`);
+    const before = { code: deg!.code, name: deg!.name, aliases: deg!.aliases, classified: deg!.classified, order: deg!.order };
+    deg!.set({ ...d, order: d.order ?? deg!.order });
+    await deg!.save();
+    await audit(admin, 'structure.degree_update', 'Degree', id, before, d);
+    return { ok: true, message: `${d.code} updated. Documents issued from now on use the new name.` };
+  });
+}
+
+export async function deleteDegree(id: string): Promise<ActionState> {
+  return run(async () => {
+    const admin = await requirePermission('structure:manage');
+    await db();
+    const deg = await Degree.findById(id).lean();
+    if (!deg) missing('Degree not found');
+    const used = await Programme.countDocuments({ degreeType: deg!.code });
+    if (used) fail(`${deg!.code} cannot be deleted while ${used} programme(s) use it.`);
+    await Degree.deleteOne({ _id: id });
+    await audit(admin, 'structure.degree_delete', 'Degree', id, { code: deg!.code, name: deg!.name });
+    return { ok: true, message: `${deg!.code} deleted.` };
   });
 }

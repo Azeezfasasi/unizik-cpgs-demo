@@ -8,7 +8,7 @@ import { AcademicSession, Department, Programme } from '@/models';
 import { Alert, Card, PageHeader, PageSkeleton } from '@/components/ui';
 import { ActionForm, SubmitButton } from '@/components/forms';
 import { createOnlineSheet } from '../../sheets/actions';
-import { DEGREE_TYPES } from '@/models/Programme';
+import { getDegrees } from '@/lib/degree-list';
 import { ProgrammePicker } from './ProgrammePicker';
 
 export const metadata: Metadata = { title: 'New submission' };
@@ -26,10 +26,11 @@ async function NewSubmissionPageContent() {
   // Only a department PG coordinator can prepare a submission for their own department.
   if (!can(user.role, 'submission:create')) redirect('/submissions');
   await db();
-  const [dept, programmes, sessions] = await Promise.all([
+  const [dept, programmes, sessions, degrees] = await Promise.all([
     Department.findById(user.department).lean(),
     Programme.find({ department: user.department }).sort({ name: 1 }).lean(),
     AcademicSession.find().sort({ startYear: -1 }).lean(),
+    getDegrees(),
   ]);
 
   return (
@@ -41,7 +42,7 @@ async function NewSubmissionPageContent() {
             <Alert tone="warning">No programmes are registered for your department. Ask the system administrator to add them.</Alert>
           ) : (
             <ActionForm action={createOnlineSheet} className="space-y-4">
-              <ProgrammePicker degreeOrder={DEGREE_TYPES}
+              <ProgrammePicker degrees={degrees.map((g) => ({ code: g.code, name: g.name }))}
                 programmes={programmes.map((p) => ({ id: p._id.toString(), name: p.name, degreeType: p.degreeType }))} />
               <div>
                 <label className="label" htmlFor="session">Session</label>

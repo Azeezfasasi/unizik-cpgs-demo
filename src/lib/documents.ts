@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { Types } from 'mongoose';
 import { renderResultDocument, type DocumentData } from './pdf';
 import { DEFAULT_DOCUMENT_SETTINGS, getDocumentSettings } from './document-settings';
+import { getDegrees } from './degree-list';
 import { verificationUrl } from './verify';
 import { GraduandRecord, Verification } from '@/models';
 
@@ -55,7 +56,7 @@ export async function buildDocumentPdf(verificationId: string) {
     issuedAt: v.createdAt, expiresAt: v.expiresAt,
     settings: { ...DEFAULT_DOCUMENT_SETTINGS, ...(v.letterhead && typeof v.letterhead === 'object' ? v.letterhead : await getDocumentSettings()) },
     student: r.student,
-    programme: r.programme?.name ?? r.degree, degreeType: r.programme?.degreeType ?? '',
+    programme: r.programme?.name ?? r.degree, degreeType: r.programme?.degreeType ?? '', degrees: await getDegrees(),
     department: r.department.name, faculty: r.department.faculty?.name ?? '', session: r.session.label,
     cgpa: r.cgpa, classOfDegree: r.classOfDegree, boardApprovalDate: r.senateApprovalDate,
     boardMeeting: r.boardMeeting, effectiveDate: r.effectiveDate,
